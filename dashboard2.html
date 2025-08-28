@@ -167,6 +167,113 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
+        /* To Do View Styles */
+        .todo-header {
+            margin-bottom: 30px;
+            text-align: center;
+            padding-bottom: 20px;
+            border-bottom: 2px solid var(--light);
+        }
+
+        .todo-header h2 {
+            font-size: 28px;
+            color: var(--dark);
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .todo-header p {
+            color: var(--gray);
+            font-size: 16px;
+        }
+
+        .todo-content {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .todo-section {
+            background: var(--light);
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-left: 4px solid var(--primary);
+        }
+
+        .todo-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .todo-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(107, 114, 128, 0.1);
+            transition: all 0.3s;
+        }
+
+        .todo-item:last-child {
+            border-bottom: none;
+        }
+
+        .todo-item:hover {
+            background: rgba(37, 99, 235, 0.03);
+            border-radius: 6px;
+            margin: 0 -10px;
+            padding: 12px 10px;
+        }
+
+        .todo-bullet {
+            width: 8px;
+            height: 8px;
+            background: var(--primary);
+            border-radius: 50%;
+            margin-top: 6px;
+            flex-shrink: 0;
+        }
+
+        .todo-text {
+            font-size: 15px;
+            line-height: 1.5;
+            color: var(--dark);
+            font-weight: 400;
+        }
+
+        .todo-priority {
+            background: var(--warning);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+
+        .todo-priority.high {
+            background: var(--danger);
+        }
+
+        .todo-priority.medium {
+            background: var(--warning);
+        }
+
+        .todo-priority.low {
+            background: var(--secondary);
+        }
+
+        /* Progress indicator */
+        .todo-progress {
+            margin-top: 20px;
+            text-align: center;
+            color: var(--gray);
+            font-size: 14px;
+        }
+
         /* Scenario Info Banner */
         #scenarioInfo {
             background: #f0f9ff;
@@ -801,6 +908,9 @@
             .team-stats {
                 grid-template-columns: 1fr;
             }
+            .todo-content {
+                padding: 0 10px;
+            }
         }
     </style>
 </head>
@@ -828,12 +938,137 @@
                     <button class="view-tab" data-view="mechanic">Individual</button>
                     <button class="view-tab" data-view="project">Project View</button>
                     <button class="view-tab" data-view="supply-chain">Supply Chain</button>
+                    <button class="view-tab" data-view="todo">To Do</button>
                 </div>
             </div>
         </div>
 
         <!-- Main Content -->
         <div class="main-content">
+
+            <!-- To Do View -->
+            <div id="todo-view" class="view-content">
+                <div class="todo-header">
+                    <h2>Production Dashboard Development To Do</h2>
+                    <p>Key features and improvements planned for implementation</p>
+                </div>
+
+                <div class="todo-content">
+                    <div class="todo-section">
+                        <ul class="todo-list">
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">FOCUS IN (incentive plan to replace TIP)</div>
+                                <div class="todo-priority high">High</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">LE Priority Dashboard (Similar to Team View, but cleaned up)</div>
+                                <div class="todo-priority high">High</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Control Station Starts and CS Milestones / Optimization Function Layer</div>
+                                <div class="todo-priority high">High</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">SRA Logic/Streamlining Decision Tree</div>
+                                <div class="todo-priority medium">Medium</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Scenarios (Priority Aircraft vs Optimal Solution & Impacts)</div>
+                                <div class="todo-priority high">High</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Auto-Assign: Minimize Product Changeovers</div>
+                                <div class="todo-priority medium">Medium</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Auto-Assign: Slack & Orphans given to new Mechanics when possible for training</div>
+                                <div class="todo-priority medium">Medium</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Cure Times and Job Segments</div>
+                                <div class="todo-priority medium">Medium</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Job Segments and Assists</div>
+                                <div class="todo-priority medium">Medium</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Delay Costs varying by Customer Contract & Optimization Function</div>
+                                <div class="todo-priority high">High</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Shift start – Baseline, Res-strike Cadence and same marching orders globally</div>
+                                <div class="todo-priority medium">Medium</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Part Demand, baseline for supply chain (CS start – 1 day?)</div>
+                                <div class="todo-priority high">High</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Metrics Culture shift: Do What's Priority, what is gone/updated/new, how to show benefit</div>
+                                <div class="todo-priority high">High</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Trial locations VFIN and/or Delivery Center</div>
+                                <div class="todo-priority medium">Medium</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Need – jobs to skillset and skill subsets</div>
+                                <div class="todo-priority medium">Medium</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Skill Hierarchy restructure, HR help (X86 can do D81, D85, D86)</div>
+                                <div class="todo-priority low">Low</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Machine Learning: Defect Parent + Object + Description Defect Flow Predictions</div>
+                                <div class="todo-priority low">Low</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Machine Learning: Odds Part will need to be re-ordered (Add to lead dashboard and supply chain dashboard)</div>
+                                <div class="todo-priority low">Low</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Daily Plan for QT, CC Staffing based on MT plan to minimize SLA constraints (response + processing times)</div>
+                                <div class="todo-priority medium">Medium</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Supplier Quality, SQIS pulls</div>
+                                <div class="todo-priority low">Low</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">MPRs in addition to etracs for part/job delays</div>
+                                <div class="todo-priority low">Low</div>
+                            </li>
+                        </ul>
+
+                        <div class="todo-progress">
+                            Development roadmap for enhanced production dashboard functionality
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <!-- Team Lead View -->
             <div id="team-lead-view" class="view-content active">
@@ -894,10 +1129,10 @@
                     <div class="table-header">
                         <h3>Task Priority List</h3>
                         <div class="table-actions">
-                            <button class="btn btn-primary" onclick="autoAssign()">⚡ Smart Auto-Assign</button>
-                            <button class="btn btn-secondary" onclick="saveAssignmentsToStorage()">💾 Save</button>
-                            <button class="btn btn-secondary" onclick="loadAssignmentsFromStorage()">📂 Load</button>
-                            <button class="btn btn-secondary" onclick="exportTasks()">📥 Export</button>
+                            <button class="btn btn-primary" onclick="autoAssign()">Smart Auto-Assign</button>
+                            <button class="btn btn-secondary" onclick="saveAssignmentsToStorage()">Save</button>
+                            <button class="btn btn-secondary" onclick="loadAssignmentsFromStorage()">Load</button>
+                            <button class="btn btn-secondary" onclick="exportTasks()">Export</button>
                         </div>
                     </div>
                     <table id="taskTable">
@@ -985,8 +1220,6 @@
             </div>
 
             <!-- Individual Mechanic View -->
-<!-- Individual Mechanic View -->
-            <!-- Individual Mechanic View -->
             <div id="mechanic-view" class="view-content">
                 <div class="mechanic-header">
                     <div class="mechanic-info">
@@ -1011,8 +1244,6 @@
             </div>
 
             <!-- Project View -->
-            <!-- Replace your entire Project View section with this -->
-            <!-- Replace your entire Project View section with this -->
             <div id="project-view" class="view-content">
                 <!-- Gantt Chart Controls -->
                 <div class="gantt-controls-new" style="display: flex; gap: 15px; margin-bottom: 15px; align-items: center; flex-wrap: wrap; background: #f9fafb; padding: 15px; border-radius: 8px;">
@@ -1031,8 +1262,15 @@
                     <div class="filter-group">
                         <label>View:</label>
                         <select id="ganttViewMode">
-                            <option value="days">Daily View</option>
-                            <option value="weeks">Weekly View</option>
+                            <option value="15min">15 Minutes</option>
+                            <option value="30min">30 Minutes</option>
+                            <option value="1hour">1 Hour</option>
+                            <option value="4hour">4 Hours</option>
+                            <option value="8hour">8 Hours</option>
+                            <option value="1day" selected>1 Day</option>
+                            <option value="1week">1 Week</option>
+                            <option value="2weeks">2 Weeks</option>
+                            <option value="1month">1 Month</option>
                         </select>
                     </div>
                     <div class="filter-group">
@@ -1044,9 +1282,9 @@
                             <option value="priority">Priority</option>
                         </select>
                     </div>
-                    <button class="btn btn-primary" onclick="refreshCustomGantt()">🔄 Refresh</button>
-                    <button class="btn btn-secondary" onclick="exportCustomGantt()">📥 Export</button>
-                    <button class="btn btn-secondary" onclick="fitGanttToTasks()">🔍 Fit All</button>
+                    <button class="btn btn-primary" onclick="refreshCustomGantt()">Refresh</button>
+                    <button class="btn btn-secondary" onclick="exportCustomGantt()">Export</button>
+                    <button class="btn btn-secondary" onclick="fitGanttToTasks()">Fit All</button>
                 </div>
 
                 <!-- Gantt Statistics -->
@@ -1142,8 +1380,7 @@
                 white-space: nowrap;
             }
 
-
-                /* Custom timeline styles */
+            /* Custom timeline styles */
             .vis-timeline {
                 border: none;
                 font-family: inherit;
@@ -1214,7 +1451,6 @@
                 </div>
 
                 <!-- Scenario Comparison Controls -->
-                                <!-- Scenario Comparison Controls -->
                 <div class="supply-chain-controls">
                     <div class="filter-group">
                         <label>Compare Against:</label>
@@ -1234,7 +1470,7 @@
                             <option value="all">All Products</option>
                         </select>
                     </div>
-                    <button class="btn btn-secondary" onclick="exportSupplyChainReport()">📥 Export Report</button>
+                    <button class="btn btn-secondary" onclick="exportSupplyChainReport()">Export Report</button>
                 </div>
 
                 <!-- Late Parts Timeline -->

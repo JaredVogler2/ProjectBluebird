@@ -843,7 +843,12 @@ def get_mechanic_assigned_tasks(mechanic_id):
 
 # ========== FLASK ROUTES ==========
 
+# Landing page - serves as the default route
 @app.route('/')
+def landing_page():
+    return render_template('landing_page.html')
+
+@app.route('/dashboard')
 def index():
     """Serve the main dashboard page"""
     return render_template('dashboard2.html')

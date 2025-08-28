@@ -4973,22 +4973,49 @@ function updateView() {
 }
 
 // Initialize custom Gantt chart
+// Initialize custom Gantt chart with enhanced time scale support
 function initializeCustomGantt() {
     console.log('Initializing custom Gantt chart...');
 
     if (!scenarioData || !scenarioData.tasks) {
         console.error('No task data available for Gantt chart');
+
+        // Show message in the Gantt area
+        const container = document.querySelector('.gantt-container-new');
+        if (container) {
+            container.innerHTML = `
+                <div style="padding: 40px; text-align: center; color: #6b7280;">
+                    <h3>No Task Data Available</h3>
+                    <p>Please ensure scenario data is loaded properly.</p>
+                </div>
+            `;
+        }
         return;
     }
 
+    console.log(`Converting ${scenarioData.tasks.length} tasks to Gantt format...`);
+
     // Convert task data to Gantt format
     customGanttTasks = convertTasksToGanttFormat(scenarioData.tasks);
+
+    // Set default view mode
+    customGanttViewMode = '1day';
+
+    // Set the dropdown to default value
+    const viewModeSelect = document.getElementById('ganttViewMode');
+    if (viewModeSelect) {
+        viewModeSelect.value = customGanttViewMode;
+    }
+
+    console.log(`Converted to ${customGanttTasks.length} Gantt tasks`);
 
     // Populate filter dropdowns
     populateGanttFilters();
 
     // Render the Gantt chart
     renderCustomGanttChart();
+
+    console.log('Custom Gantt chart initialization complete');
 }
 
 // Convert dashboard tasks to Gantt format
@@ -5101,8 +5128,8 @@ function initializeCustomGantt() {
     console.log('Custom Gantt chart initialization complete');
 }
 
-// Generate date range for Gantt chart
-function generateGanttDateRange(tasks, mode = 'days') {
+// Generate date range for Gantt chart with granular time scales
+function generateGanttDateRange(tasks, mode = '1day') {
     if (tasks.length === 0) {
         const today = new Date();
         return [today];
@@ -5110,23 +5137,73 @@ function generateGanttDateRange(tasks, mode = 'days') {
 
     const startDates = tasks.map(t => t.startDate);
     const endDates = tasks.map(t => t.endDate);
-    const minStart = new Date(Math.min(...startDates));
-    const maxEnd = new Date(Math.max(...endDates));
+    let minStart = new Date(Math.min(...startDates));
+    let maxEnd = new Date(Math.max(...endDates));
 
-    // Add padding
-    minStart.setDate(minStart.getDate() - 2);
-    maxEnd.setDate(maxEnd.getDate() + 2);
+    // Add padding based on time scale
+    const paddingConfig = {
+        '15min': { amount: 2, unit: 'hours' },
+        '30min': { amount: 4, unit: 'hours' },
+        '1hour': { amount: 8, unit: 'hours' },
+        '4hour': { amount: 1, unit: 'days' },
+        '8hour': { amount: 1, unit: 'days' },
+        '1day': { amount: 2, unit: 'days' },
+        '1week': { amount: 7, unit: 'days' },
+        '2weeks': { amount: 14, unit: 'days' },
+        '1month': { amount: 30, unit: 'days' }
+    };
+
+    const padding = paddingConfig[mode] || paddingConfig['1day'];
+
+    if (padding.unit === 'hours') {
+        minStart.setHours(minStart.getHours() - padding.amount);
+        maxEnd.setHours(maxEnd.getHours() + padding.amount);
+    } else {
+        minStart.setDate(minStart.getDate() - padding.amount);
+        maxEnd.setDate(maxEnd.getDate() + padding.amount);
+    }
 
     const dates = [];
     const current = new Date(minStart);
 
+    // Generate dates based on time scale
     while (current <= maxEnd) {
         dates.push(new Date(current));
-        if (mode === 'days') {
-            current.setDate(current.getDate() + 1);
-        } else if (mode === 'weeks') {
-            current.setDate(current.getDate() + 7);
+
+        switch (mode) {
+            case '15min':
+                current.setMinutes(current.getMinutes() + 15);
+                break;
+            case '30min':
+                current.setMinutes(current.getMinutes() + 30);
+                break;
+            case '1hour':
+                current.setHours(current.getHours() + 1);
+                break;
+            case '4hour':
+                current.setHours(current.getHours() + 4);
+                break;
+            case '8hour':
+                current.setHours(current.getHours() + 8);
+                break;
+            case '1day':
+                current.setDate(current.getDate() + 1);
+                break;
+            case '1week':
+                current.setDate(current.getDate() + 7);
+                break;
+            case '2weeks':
+                current.setDate(current.getDate() + 14);
+                break;
+            case '1month':
+                current.setMonth(current.getMonth() + 1);
+                break;
+            default:
+                current.setDate(current.getDate() + 1);
         }
+
+        // Limit total columns to prevent performance issues
+        if (dates.length > 200) break;
     }
 
     return dates;
@@ -5169,14 +5246,20 @@ function getFilteredGanttTasks() {
 }
 
 // Render the complete Gantt chart
+// Render the complete Gantt chart with enhanced time scale support
 function renderCustomGanttChart() {
     const tasks = getFilteredGanttTasks();
+
+    // Get the selected time scale from dropdown
+    customGanttViewMode = document.getElementById('ganttViewMode')?.value || '1day';
+
     const dates = generateGanttDateRange(tasks, customGanttViewMode);
 
     renderGanttHeader(dates);
     renderGanttTasks(tasks, dates);
     updateGanttStats(tasks);
-    console.log(`Rendered Gantt chart with ${tasks.length} tasks and ${dates.length} date columns`);
+
+    console.log(`Rendered Gantt chart with ${tasks.length} tasks, ${dates.length} time periods (${customGanttViewMode} scale)`);
 }
 
 // Render Gantt chart header
@@ -5248,6 +5331,7 @@ function renderGanttHeader(dates) {
 }
 
 // Render Gantt chart task rows
+// Render Gantt chart task rows with time-scale aware positioning
 function renderGanttTasks(tasks, dates) {
     const tbody = document.getElementById('ganttBodyNew');
     if (!tbody) {
@@ -5256,6 +5340,9 @@ function renderGanttTasks(tasks, dates) {
     }
 
     tbody.innerHTML = '';
+
+    const timeScale = customGanttViewMode || '1day';
+    const columnConfig = getGanttColumnConfig(timeScale);
 
     tasks.forEach((task, taskIndex) => {
         const row = document.createElement('tr');
@@ -5294,15 +5381,16 @@ function renderGanttTasks(tasks, dates) {
 
         // Date cells with task bars
         let taskBarRendered = false;
+        const taskPosition = calculateGanttTaskPosition(task, dates, timeScale);
 
         dates.forEach((date, dateIndex) => {
             const dateCell = document.createElement('td');
             const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-            const isToday = date.toDateString() === new Date().toDateString();
+            const isToday = isTimeToday(date, timeScale);
 
             dateCell.style.cssText = `
-                min-width: 40px;
-                width: 40px;
+                min-width: ${columnConfig.width}px;
+                width: ${columnConfig.width}px;
                 padding: 0;
                 margin: 0;
                 position: relative;
@@ -5310,42 +5398,46 @@ function renderGanttTasks(tasks, dates) {
                 vertical-align: middle;
                 border-right: 1px solid #e5e7eb;
                 border-bottom: 1px solid #f3f4f6;
-                background: ${isWeekend ? '#f9fafb' : isToday ? '#fef2f2' : 'transparent'};
+                background: ${isWeekend && columnConfig.showWeekends ? '#f9fafb' : isToday ? '#fef2f2' : 'transparent'};
             `;
 
-            // Check if task spans this date and render bar on first occurrence
-            if (date >= task.startDate && date <= task.endDate && !taskBarRendered) {
-                const taskPosition = calculateGanttTaskPosition(task, dates);
-
+            // Render task bar on the start position
+            if (dateIndex === taskPosition.startIndex && !taskBarRendered) {
                 const bar = document.createElement('div');
+                const barWidth = taskPosition.width * columnConfig.width - 2;
+
                 bar.style.cssText = `
                     position: absolute;
                     top: 4px;
                     left: 1px;
                     height: 28px;
-                    width: ${taskPosition.width * 40 - 2}px;
+                    width: ${Math.max(barWidth, columnConfig.width - 2)}px;
                     border-radius: 4px;
                     display: flex;
                     align-items: center;
-                    padding: 0 8px;
+                    padding: 0 ${Math.max(8, columnConfig.width / 5)}px;
                     color: white;
                     font-weight: 500;
-                    font-size: 11px;
+                    font-size: ${Math.max(9, columnConfig.fontSize - 1)}px;
                     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
                     cursor: pointer;
                     transition: all 0.2s ease;
                     ${getTaskBarStyle(task.type)};
                     ${task.critical ? 'border: 2px solid #fbbf24; box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.2);' : ''}
+                    overflow: hidden;
                 `;
 
-                bar.textContent = task.id;
+                // Adjust text content based on bar width
+                if (barWidth > 60) {
+                    bar.textContent = task.id;
+                } else if (barWidth > 30) {
+                    bar.textContent = task.id.substring(0, 8) + (task.id.length > 8 ? '...' : '');
+                } else {
+                    bar.innerHTML = '<div style="width: 100%; height: 100%;"></div>'; // Just color bar
+                }
 
-                // Enhanced tooltip
-                const startDateStr = task.startDate.toLocaleDateString();
-                const endDateStr = task.endDate.toLocaleDateString();
-                const durationDays = Math.ceil((task.endDate - task.startDate) / (1000 * 60 * 60 * 24));
-
-                bar.title = `${task.name || task.id}\nStart: ${startDateStr}\nEnd: ${endDateStr}\nDuration: ${durationDays} days\nTeam: ${task.team || 'Unknown'}\nProduct: ${task.product || 'Unknown'}${task.critical ? '\n⚠️ CRITICAL TASK' : ''}`;
+                // Enhanced tooltip with time scale specific info
+                bar.title = getTaskBarTooltip(task, timeScale);
 
                 bar.addEventListener('mouseenter', () => {
                     bar.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.3)';
@@ -5367,7 +5459,7 @@ function renderGanttTasks(tasks, dates) {
         tbody.appendChild(row);
     });
 
-    console.log(`Rendered ${tasks.length} task rows`);
+    console.log(`Rendered ${tasks.length} task rows with ${timeScale} time scale`);
 }
 
 
@@ -5472,6 +5564,7 @@ function updateGanttStats(tasks) {
 
 
 // Populate Gantt filter dropdowns
+// Populate Gantt filter dropdowns with enhanced event handling
 function populateGanttFilters() {
     if (customGanttTasks.length === 0) return;
 
@@ -5501,7 +5594,7 @@ function populateGanttFilters() {
         });
     }
 
-    // Add event listeners
+    // Add event listeners for filters
     const filterElements = ['ganttProductFilter', 'ganttTeamFilter', 'ganttSortBy'];
     filterElements.forEach(id => {
         const element = document.getElementById(id);
@@ -5511,11 +5604,13 @@ function populateGanttFilters() {
         }
     });
 
+    // Add view mode change listener with time scale support
     const viewModeSelect = document.getElementById('ganttViewMode');
     if (viewModeSelect && !viewModeSelect.hasAttribute('data-listener-added')) {
         viewModeSelect.setAttribute('data-listener-added', 'true');
-        viewModeSelect.addEventListener('change', () => {
-            customGanttViewMode = viewModeSelect.value;
+        viewModeSelect.addEventListener('change', (e) => {
+            customGanttViewMode = e.target.value;
+            console.log(`Switching to time scale: ${customGanttViewMode}`);
             renderCustomGanttChart();
         });
     }
@@ -5620,3 +5715,235 @@ window.refreshTimeline = refreshTimeline;
 window.exportTimelineData = exportTimelineData;
 window.fitTimelineToTasks = fitTimelineToTasks
 }
+
+// Get column configuration for different time scales
+function getGanttColumnConfig(timeScale) {
+    const configs = {
+        '15min': { width: 30, fontSize: 10, vertical: true, showWeekends: false },
+        '30min': { width: 35, fontSize: 10, vertical: true, showWeekends: false },
+        '1hour': { width: 40, fontSize: 11, vertical: true, showWeekends: false },
+        '4hour': { width: 50, fontSize: 11, vertical: false, showWeekends: false },
+        '8hour': { width: 60, fontSize: 11, vertical: false, showWeekends: false },
+        '1day': { width: 40, fontSize: 11, vertical: true, showWeekends: true },
+        '1week': { width: 70, fontSize: 11, vertical: false, showWeekends: false },
+        '2weeks': { width: 80, fontSize: 11, vertical: false, showWeekends: false },
+        '1month': { width: 90, fontSize: 11, vertical: false, showWeekends: false }
+    };
+    return configs[timeScale] || configs['1day'];
+}
+
+// Format header labels based on time scale
+function formatGanttHeaderLabel(date, timeScale) {
+    switch (timeScale) {
+        case '15min':
+        case '30min':
+            return date.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+        case '1hour':
+        case '4hour':
+        case '8hour':
+            return date.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                hour12: false
+            }) + 'h';
+        case '1day':
+            return date.getDate().toString().padStart(2, '0');
+        case '1week':
+            return `W${getWeekNumber(date)}`;
+        case '2weeks':
+            return `W${getWeekNumber(date)}-${getWeekNumber(new Date(date.getTime() + 7 * 24 * 60 * 60 * 1000))}`;
+        case '1month':
+            return date.toLocaleDateString('en-US', { month: 'short' });
+        default:
+            return date.getDate().toString();
+    }
+}
+
+// Format header tooltips
+function formatGanttHeaderTooltip(date, timeScale) {
+    switch (timeScale) {
+        case '15min':
+        case '30min':
+        case '1hour':
+        case '4hour':
+        case '8hour':
+            return date.toLocaleString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        case '1day':
+            return date.toLocaleDateString('en-US', {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric'
+            });
+        case '1week':
+        case '2weeks':
+            return `Week of ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        case '1month':
+            return date.toLocaleDateString('en-US', {
+                month: 'long',
+                year: 'numeric'
+            });
+        default:
+            return date.toLocaleDateString();
+    }
+}
+
+// Check if a time period includes today
+function isTimeToday(date, timeScale) {
+    const today = new Date();
+
+    switch (timeScale) {
+        case '15min':
+        case '30min':
+        case '1hour':
+        case '4hour':
+        case '8hour':
+            // Check if the hour period includes current time
+            const endTime = new Date(date);
+            const interval = parseInt(timeScale.replace(/\D/g, '')) || 1;
+            const unit = timeScale.includes('min') ? 'minutes' : 'hours';
+
+            if (unit === 'minutes') {
+                endTime.setMinutes(endTime.getMinutes() + interval);
+            } else {
+                endTime.setHours(endTime.getHours() + interval);
+            }
+
+            return today >= date && today < endTime;
+        case '1day':
+            return date.toDateString() === today.toDateString();
+        case '1week':
+            const weekStart = new Date(date);
+            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekEnd.getDate() + 6);
+            return today >= weekStart && today <= weekEnd;
+        case '2weeks':
+            const twoWeekEnd = new Date(date);
+            twoWeekEnd.setDate(twoWeekEnd.getDate() + 13);
+            return today >= date && today <= twoWeekEnd;
+        case '1month':
+            return date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
+        default:
+            return false;
+    }
+}
+
+// Calculate task position with time-scale awareness
+function calculateGanttTaskPosition(task, dates, timeScale) {
+    let startIndex = -1;
+    let endIndex = -1;
+
+    for (let i = 0; i < dates.length; i++) {
+        const date = dates[i];
+
+        // Check if task overlaps with this time period
+        if (taskOverlapsTimePeriod(task, date, timeScale)) {
+            if (startIndex === -1) {
+                startIndex = i;
+            }
+            endIndex = i;
+        }
+    }
+
+    // Handle tasks that start before or end after visible range
+    if (startIndex === -1) {
+        // Task is completely outside the visible range
+        return { startIndex: 0, endIndex: 0, width: 0 };
+    }
+
+    return {
+        startIndex: startIndex,
+        endIndex: endIndex,
+        width: endIndex - startIndex + 1
+    };
+}
+
+// Check if task overlaps with a time period
+function taskOverlapsTimePeriod(task, periodStart, timeScale) {
+    const periodEnd = new Date(periodStart);
+
+    // Calculate period end based on time scale
+    switch (timeScale) {
+        case '15min':
+            periodEnd.setMinutes(periodEnd.getMinutes() + 15);
+            break;
+        case '30min':
+            periodEnd.setMinutes(periodEnd.getMinutes() + 30);
+            break;
+        case '1hour':
+            periodEnd.setHours(periodEnd.getHours() + 1);
+            break;
+        case '4hour':
+            periodEnd.setHours(periodEnd.getHours() + 4);
+            break;
+        case '8hour':
+            periodEnd.setHours(periodEnd.getHours() + 8);
+            break;
+        case '1day':
+            periodEnd.setDate(periodEnd.getDate() + 1);
+            break;
+        case '1week':
+            periodEnd.setDate(periodEnd.getDate() + 7);
+            break;
+        case '2weeks':
+            periodEnd.setDate(periodEnd.getDate() + 14);
+            break;
+        case '1month':
+            periodEnd.setMonth(periodEnd.getMonth() + 1);
+            break;
+    }
+
+    // Check if task time range overlaps with period time range
+    return task.startDate < periodEnd && task.endDate > periodStart;
+}
+
+// Generate tooltip content based on time scale
+function getTaskBarTooltip(task, timeScale) {
+    let startStr, endStr, durationStr;
+
+    switch (timeScale) {
+        case '15min':
+        case '30min':
+        case '1hour':
+        case '4hour':
+        case '8hour':
+            startStr = task.startDate.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            endStr = task.endDate.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            const durationHours = (task.endDate - task.startDate) / (1000 * 60 * 60);
+            if (durationHours < 1) {
+                durationStr = `${Math.round(durationHours * 60)} minutes`;
+            } else {
+                durationStr = `${durationHours.toFixed(1)} hours`;
+            }
+            break;
+        default:
+            startStr = task.startDate.toLocaleDateString();
+            endStr = task.endDate.toLocaleDateString();
+            const durationDays = Math.ceil((task.endDate - task.startDate) / (1000 * 60 * 60 * 24));
+            durationStr = `${durationDays} day${durationDays !== 1 ? 's' : ''}`;
+    }
+
+    return `${task.name || task.id}\nStart: ${startStr}\nEnd: ${endStr}\nDuration: ${durationStr}\nTeam: ${task.team || 'Unknown'}\nProduct: ${task.product || 'Unknown'}${task.critical ? '\n⚠️ CRITICAL TASK' : ''}`;
+}
+
