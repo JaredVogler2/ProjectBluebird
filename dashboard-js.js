@@ -6596,6 +6596,7 @@ function displayIndividualViewWithFeedback(mechanicSchedule, mechanicId) {
 }
 
 // Create individual task item with feedback form
+// Create individual task item with feedback form
 function createTaskFeedbackItem(task, mechanicId) {
     const container = document.createElement('div');
     container.className = 'task-feedback-item';
@@ -6713,13 +6714,14 @@ function createTaskFeedbackItem(task, mechanicId) {
                     </div>
 
                     <!-- Predecessor Task Field (shown only for predecessor reason) -->
-                    <div id="predecessor-field-${feedbackKey}"
-                         style="margin-bottom: 10px; display: ${existingFeedback?.reason === 'predecessor' ? 'block' : 'none'};">
+                    <div id="predecessor-field-${feedbackKey}" class="predecessor-field"
+                         style="margin-bottom: 10px; display: ${existingFeedback?.reason === 'predecessor' ? 'block' : 'none'}; position: relative;">
                         <label style="display: block; font-weight: 500; margin-bottom: 4px; color: #374151;">
                             Predecessor Task ID:
                         </label>
                         <input type="text"
                                id="predecessor-${feedbackKey}"
+                               class="predecessor-input"
                                placeholder="Start typing task ID (e.g., A_12, B_45)..."
                                value="${existingFeedback?.predecessorTask || ''}"
                                oninput="handlePredecessorAutocomplete(this, '${task.product}')"
@@ -6766,6 +6768,9 @@ function createTaskFeedbackItem(task, mechanicId) {
             </div>
         </div>
     `;
+
+    // THIS IS THE FIX FOR ISSUE #1 - ADD THIS LINE:
+    setTimeout(() => setupReasonDropdownHandler(feedbackKey), 100);
 
     return container;
 }
@@ -7148,6 +7153,23 @@ function updateFeedbackSummary() {
     }
 }
 
+function handleReasonChange(feedbackKey) {
+    const reasonSelect = document.getElementById(`reason-${feedbackKey}`);
+    const predecessorField = document.getElementById(`predecessor-field-${feedbackKey}`);
+
+    if (reasonSelect && predecessorField) {
+        if (reasonSelect.value === 'predecessor') {
+            predecessorField.style.display = 'block';
+            // Focus the input field
+            const input = document.getElementById(`predecessor-${feedbackKey}`);
+            if (input) {
+                setTimeout(() => input.focus(), 100);
+            }
+        } else {
+            predecessorField.style.display = 'none';
+        }
+    }
+}
 
 // Load feedback from localStorage on page load
 function loadSavedFeedback() {
@@ -7666,5 +7688,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 console.log('Task Feedback System initialized successfully!');
+
+window.handleReasonChange = handleReasonChange;
 
 
