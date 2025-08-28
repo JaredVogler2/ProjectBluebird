@@ -28,6 +28,7 @@ scenario_results = {}  # Make sure this is initialized as empty dict, not None
 mechanic_assignments = {}  # Store assignments per scenario for conflict-free scheduling
 
 
+
 def ensure_all_teams_have_capacity(scheduler):
     """Ensure all teams referenced by tasks exist in capacity tables"""
     teams_needed = set()

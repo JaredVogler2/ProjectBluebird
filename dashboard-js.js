@@ -12,14 +12,31 @@ let scenarioData = {};
 let allScenarios = {};
 let mechanicAvailability = {};
 let taskAssignments = {};
-let savedAssignments = {}; // Store assignments per scenario
 let latePartsData = {};
 let supplyChainMetrics = {};
 
+let savedAssignments = {}; // Store assignments per scenario
+
+// Initialize savedAssignments structure
+function initializeSavedAssignments() {
+    if (!savedAssignments) {
+        savedAssignments = {};
+    }
+    if (!savedAssignments[currentScenario]) {
+        savedAssignments[currentScenario] = {};
+    }
+    if (!savedAssignments[currentScenario].mechanicSchedules) {
+        savedAssignments[currentScenario].mechanicSchedules = {};
+    }
+}
 
 // Initialize dashboard on page load
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Initializing Production Scheduling Dashboard...');
+
+    // Initialize data structures first
+    initializeSavedAssignments();
+
     loadAllScenarios();
     setupEventListeners();
     setupProductFilter();
@@ -85,6 +102,8 @@ async function loadAllScenarios() {
 
 // Setup all event listeners
 function setupEventListeners() {
+    console.log('Setting up event listeners...');
+
     // View tab switching
     document.querySelectorAll('.view-tab').forEach(tab => {
         tab.addEventListener('click', function() {
@@ -105,13 +124,13 @@ function setupEventListeners() {
     if (teamSelect) {
         teamSelect.addEventListener('change', function() {
             selectedTeam = this.value;
-            updateSkillDropdown();  // Update skills based on team selection
-            updateShiftDropdown();  // Update shifts based on team selection
+            updateSkillDropdown();
+            updateShiftDropdown();
             updateTeamLeadView();
         });
     }
 
-    // Skill selection (NEW)
+    // Skill selection
     const skillSelect = document.getElementById('skillSelect');
     if (skillSelect) {
         skillSelect.addEventListener('change', function() {
@@ -140,10 +159,9 @@ function setupEventListeners() {
 
     // Mechanic selection for individual view
     const mechanicSelect = document.getElementById('mechanicSelect');
-    if (mechanicSelect) {
-        mechanicSelect.addEventListener('change', function() {
-            updateMechanicView();
-        });
+    if (mechanicSelect && !mechanicSelect.hasAttribute('data-listener-added')) {
+        mechanicSelect.setAttribute('data-listener-added', 'true');
+        mechanicSelect.addEventListener('change', handleMechanicSelection);
     }
 
     // Auto-assign button
@@ -234,6 +252,64 @@ function setupEventListeners() {
         });
     }
 
+    // Timeline controls
+    const timelineProductSelect = document.getElementById('timelineProductSelect');
+    if (timelineProductSelect) {
+        timelineProductSelect.addEventListener('change', renderTimeline);
+    }
+
+    const timelineTeamSelect = document.getElementById('timelineTeamSelect');
+    if (timelineTeamSelect) {
+        timelineTeamSelect.addEventListener('change', renderTimeline);
+    }
+
+    const timelineScale = document.getElementById('timelineScale');
+    if (timelineScale) {
+        timelineScale.addEventListener('change', function() {
+            const currentWindow = timeline ? timeline.getWindow() : null;
+            initializeTimeline();
+            setTimeout(() => {
+                if (timeline && currentWindow) {
+                    timeline.setWindow(currentWindow.start, currentWindow.end);
+                }
+            }, 100);
+        });
+    }
+
+    const timelineGroupBy = document.getElementById('timelineGroupBy');
+    if (timelineGroupBy) {
+        timelineGroupBy.addEventListener('change', renderTimeline);
+    }
+
+    const focusDateInput = document.getElementById('timelineFocusDate');
+    if (focusDateInput) {
+        focusDateInput.addEventListener('change', function() {
+            if (this.value) {
+                goToDate(new Date(this.value));
+            }
+        });
+    }
+
+    // Supply chain controls
+    const supplyChainProductFilter = document.getElementById('supplyChainProductFilter');
+    if (supplyChainProductFilter && !supplyChainProductFilter.hasAttribute('data-initialized')) {
+        supplyChainProductFilter.setAttribute('data-initialized', 'true');
+        supplyChainProductFilter.addEventListener('change', () => {
+            updateLatePartsTimeline();
+            updateLatePartsImpactTable();
+        });
+    }
+
+    document.querySelectorAll('.scenario-compare').forEach(checkbox => {
+        if (!checkbox.hasAttribute('data-listener-added')) {
+            checkbox.setAttribute('data-listener-added', 'true');
+            checkbox.addEventListener('change', () => {
+                updateLatePartsTimeline();
+                updateProductImpactGrid();
+            });
+        }
+    });
+
     // Task assignment selects (dynamic)
     document.addEventListener('change', function(e) {
         if (e.target.classList.contains('assign-select')) {
@@ -241,12 +317,10 @@ function setupEventListeners() {
             const position = e.target.dataset.position || '0';
             const mechanicId = e.target.value;
 
-            // Initialize saved assignments for this scenario if needed
             if (!savedAssignments[currentScenario]) {
                 savedAssignments[currentScenario] = {};
             }
 
-            // Update or create assignment record
             if (!savedAssignments[currentScenario][taskId]) {
                 const task = scenarioData.tasks.find(t => t.taskId === taskId);
                 if (task) {
@@ -258,39 +332,32 @@ function setupEventListeners() {
                 }
             }
 
-            // Update the specific position
             if (savedAssignments[currentScenario][taskId]) {
                 const assignment = savedAssignments[currentScenario][taskId];
                 if (!assignment.mechanics) assignment.mechanics = [];
 
-                // Ensure array is large enough
                 while (assignment.mechanics.length <= parseInt(position)) {
                     assignment.mechanics.push('');
                 }
 
-                // Set the mechanic at this position
                 assignment.mechanics[parseInt(position)] = mechanicId;
 
-                // Mark as partial if not all positions filled
                 const filledCount = assignment.mechanics.filter(m => m).length;
                 assignment.partial = filledCount < assignment.mechanicsNeeded;
             }
 
-            // Visual feedback
             if (mechanicId) {
                 e.target.style.backgroundColor = '#d4edda';
                 setTimeout(() => {
                     e.target.style.backgroundColor = '';
                     e.target.classList.add('has-saved-assignment');
                 }, 1000);
-
-                // Update mechanic schedules for Individual view
-                updateMechanicSchedulesFromAssignments();
             } else {
                 e.target.classList.remove('has-saved-assignment');
             }
 
-            // Optional: Make API call to save on server
+            updateMechanicSchedulesFromAssignments();
+
             if (mechanicId) {
                 fetch('/api/assign_task', {
                     method: 'POST',
@@ -315,56 +382,8 @@ function setupEventListeners() {
                 });
             }
 
-            // Update assignment summary
             if (typeof updateAssignmentSummary === 'function') {
                 updateAssignmentSummary();
-            }
-        }
-    });
-
-    // Keyboard shortcuts
-    document.addEventListener('keydown', function(e) {
-        // Ctrl/Cmd + R to refresh data
-        if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
-            e.preventDefault();
-            refreshData();
-        }
-
-        // Ctrl/Cmd + E to export
-        if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
-            e.preventDefault();
-            exportTasks();
-        }
-
-        // Number keys 1-4 to switch views
-        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-            switch(e.key) {
-                case '1':
-                    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
-                        switchView('team-lead');
-                    }
-                    break;
-                case '2':
-                    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
-                        switchView('management');
-                    }
-                    break;
-                case '3':
-                    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
-                        switchView('mechanic');
-                    }
-                    break;
-                case '4':
-                    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
-                        switchView('project');
-                    }
-                    break;
-                    // Add Supply Chain to the view switching logic in setupEventListeners()
-                case '5':
-                    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
-                        switchView('supply-chain');
-                    }
-                    break;
             }
         }
     });
@@ -374,7 +393,6 @@ function setupEventListeners() {
     window.addEventListener('resize', function() {
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(function() {
-            // Refresh Gantt chart if visible
             if (currentView === 'project' && typeof renderGanttChart === 'function') {
                 renderGanttChart();
             }
@@ -390,6 +408,8 @@ function setupEventListeners() {
             switchScenario(e.state.scenario);
         }
     });
+
+    console.log('Event listeners setup complete');
 }
 
 // Handle Gantt sort functionality
@@ -467,6 +487,7 @@ function setupProductFilter() {
 }
 
 // Switch scenario with enhanced handling
+// Switch scenario with enhanced handling
 function switchScenario(scenario) {
     if (allScenarios[scenario]) {
         currentScenario = scenario;
@@ -485,7 +506,10 @@ function switchScenario(scenario) {
         if (currentView === 'team-lead') {
             loadSavedAssignments();
         }
-    }
+        if (currentView === 'mechanic') {
+            updateMechanicView();
+        }
+    } // <-- This closing brace was missing
 }
 
 // Update product filter dropdown
@@ -1288,6 +1312,14 @@ function taskMatchesTeamFilter(task, selectedTeam, teamsToInclude) {
     }
 }
 
+// Add this helper function
+function ensureSavedAssignments() {
+    if (typeof savedAssignments === 'undefined' || !savedAssignments) {
+        console.warn('savedAssignments not initialized, reinitializing...');
+        initializeSavedAssignments();
+    }
+}
+
 // Determine which teams to include based on selection
 let teamsToInclude = [];
 
@@ -1711,186 +1743,6 @@ async function showProductDetails(productName) {
         }
     } catch (error) {
         console.error('Error loading product details:', error);
-    }
-}
-
-// Enhanced Individual Mechanic View with Team Grouping and Skill Filtering
-async function updateMechanicView() {
-    if (!scenarioData) return;
-
-    // First, populate the mechanic dropdown with team groupings
-    const mechanicSelect = document.getElementById('mechanicSelect');
-    if (mechanicSelect) {
-        const currentSelection = mechanicSelect.value;
-        mechanicSelect.innerHTML = '';
-
-        // Add group view options at the top
-        const allOption = document.createElement('option');
-        allOption.value = 'all';
-        allOption.textContent = '📊 All Workers (Aggregated View)';
-        mechanicSelect.appendChild(allOption);
-
-        const allMechOption = document.createElement('option');
-        allMechOption.value = 'all-mechanics';
-        allMechOption.textContent = '🔧 All Mechanics (Aggregated)';
-        mechanicSelect.appendChild(allMechOption);
-
-        const allQualOption = document.createElement('option');
-        allQualOption.value = 'all-quality';
-        allQualOption.textContent = '✓ All Quality Inspectors (Aggregated)';
-        mechanicSelect.appendChild(allQualOption);
-
-        // Add All Customers option
-        const allCustOption = document.createElement('option');
-        allCustOption.value = 'all-customer';
-        allCustOption.textContent = '👤 All Customers (Aggregated)';
-        mechanicSelect.appendChild(allCustOption);
-
-        // Add separator
-        const separator = document.createElement('option');
-        separator.disabled = true;
-        separator.textContent = '─────────────────────';
-        mechanicSelect.appendChild(separator);
-
-        // Build team structure with skills - ONLY include workers with assignments
-        const teamStructure = {};
-        const assignedWorkers = new Set();
-
-        // First, identify which workers have assignments
-        if (savedAssignments[currentScenario] && savedAssignments[currentScenario].mechanicSchedules) {
-            Object.keys(savedAssignments[currentScenario].mechanicSchedules).forEach(workerId => {
-                const schedule = savedAssignments[currentScenario].mechanicSchedules[workerId];
-                if (schedule.tasks && schedule.tasks.length > 0) {
-                    assignedWorkers.add(workerId);
-                }
-            });
-        }
-
-        // Only process workers who have assignments
-        assignedWorkers.forEach(workerId => {
-            const schedule = savedAssignments[currentScenario].mechanicSchedules[workerId];
-            const teamSkill = schedule.teamSkill || workerId.split('_')[0];
-            const baseTeam = schedule.team || teamSkill.split(' (')[0];
-
-            if (!teamStructure[baseTeam]) {
-                teamStructure[baseTeam] = {
-                    workers: [],
-                    isQuality: baseTeam.toLowerCase().includes('quality'),
-                    isCustomer: baseTeam.toLowerCase().includes('customer')
-                };
-            }
-
-            teamStructure[baseTeam].workers.push({
-                id: workerId,
-                displayName: schedule.displayName || workerId,
-                taskCount: schedule.tasks ? schedule.tasks.length : 0
-            });
-        });
-
-        // Sort teams: Mechanics first, then Quality, then Customer
-        const sortedTeams = Object.keys(teamStructure).sort((a, b) => {
-            const aCustomer = teamStructure[a].isCustomer;
-            const bCustomer = teamStructure[b].isCustomer;
-            const aQual = teamStructure[a].isQuality;
-            const bQual = teamStructure[b].isQuality;
-
-            if (aCustomer !== bCustomer) return aCustomer ? 1 : -1;
-            if (aQual !== bQual) return aQual ? 1 : -1;
-            return a.localeCompare(b);
-        });
-
-        // Add teams with their workers
-        sortedTeams.forEach(baseTeam => {
-            const teamInfo = teamStructure[baseTeam];
-
-            // Only create optgroup if there are workers
-            if (teamInfo.workers.length > 0) {
-                const optgroup = document.createElement('optgroup');
-                optgroup.label = `${baseTeam} (${teamInfo.workers.length} active)`;
-
-                // Add team-level aggregated option if multiple workers
-                if (teamInfo.workers.length > 1) {
-                    const teamOption = document.createElement('option');
-                    teamOption.value = `team:${baseTeam}`;
-                    teamOption.textContent = `📊 All ${baseTeam} (${teamInfo.workers.length} workers)`;
-                    teamOption.style.fontWeight = 'bold';
-                    optgroup.appendChild(teamOption);
-                }
-
-                // Add individual workers
-                teamInfo.workers.forEach(worker => {
-                    const option = document.createElement('option');
-                    option.value = worker.id;
-
-                    // Use proper role names based on team type
-                    let label;
-                    if (teamInfo.isCustomer) {
-                        // Extract worker number from ID
-                        const workerNum = worker.id.split('_').pop();
-                        label = `  Customer #${workerNum} (${worker.taskCount} tasks)`;
-                    } else if (teamInfo.isQuality) {
-                        const workerNum = worker.id.split('_').pop();
-                        label = `  Inspector #${workerNum} (${worker.taskCount} tasks)`;
-                    } else {
-                        const workerNum = worker.id.split('_').pop();
-                        label = `  Mechanic #${workerNum} (${worker.taskCount} tasks)`;
-                    }
-
-                    option.textContent = label;
-                    optgroup.appendChild(option);
-                });
-
-                mechanicSelect.appendChild(optgroup);
-            }
-        });
-
-        // If no workers have assignments, show a message
-        if (assignedWorkers.size === 0) {
-            const noAssignOption = document.createElement('option');
-            noAssignOption.value = 'none';
-            noAssignOption.textContent = 'No workers have assignments yet';
-            noAssignOption.disabled = true;
-            mechanicSelect.appendChild(noAssignOption);
-        }
-
-        // Restore selection if it still exists
-        if ([...mechanicSelect.options].some(opt => opt.value === currentSelection)) {
-            mechanicSelect.value = currentSelection;
-        } else if (mechanicSelect.options.length > 0) {
-            mechanicSelect.value = 'all';
-        }
-    }
-
-    // Get selected mechanic/team and display schedule
-    const selection = document.getElementById('mechanicSelect').value;
-
-    if (!selection || selection === 'none') {
-        displayNoSelection();
-        return;
-    }
-
-    // Determine what type of view to show
-    let viewType = 'individual';
-    let viewData = null;
-
-    if (selection === 'all' || selection === 'all-mechanics' || selection === 'all-quality' || selection === 'all-customer') {
-        viewType = 'aggregate';
-        viewData = getAggregatedTasks(selection, 'all');
-    } else if (selection.startsWith('team:')) {
-        viewType = 'team';
-        const teamName = selection.substring(5);
-        viewData = getTeamTasks(teamName, 'all');
-    } else {
-        // Individual mechanic view
-        viewType = 'individual';
-        viewData = getIndividualMechanicTasks(selection);
-    }
-
-    // Display the appropriate view
-    if (viewType === 'aggregate' || viewType === 'team') {
-        displayAggregatedView(viewData, viewType, selection);
-    } else {
-        displayIndividualView(viewData, selection);
     }
 }
 
@@ -3956,6 +3808,7 @@ function loadSavedAssignments() {
     if (loadedCount > 0) {
         console.log(`Loaded ${loadedCount} saved assignments for ${currentScenario}`);
     }
+    updateMechanicSchedulesFromAssignments();
 }
 
 // Save assignments to localStorage for persistence across sessions
@@ -4235,6 +4088,13 @@ function calculateSupplyChainMetrics() {
 
     supplyChainMetrics.avgDelayImpact = absoluteImpacts.length > 0 ?
         (absoluteImpacts.reduce((a, b) => a + b, 0) / absoluteImpacts.length).toFixed(1) : 0;
+}
+
+// Initialize feedback system when scenario changes
+function onScenarioChange(newScenario) {
+    currentScenario = newScenario;
+    initializeFeedbackSystem();
+    loadSavedFeedback();
 }
 
 // Update metric cards
@@ -6586,4 +6446,1225 @@ function getShiftInfo(shiftName) {
     };
     return shifts[shiftName] || { start: '-', end: '-', duration: '-' };
 }
+
+// Task Feedback System - Add to dashboard-js.js
+
+// Global feedback data storage
+let taskFeedback = {};
+let aircraftTasks = {}; // Cache for smart autocomplete
+
+// Initialize feedback system
+function initializeFeedbackSystem() {
+    // Initialize feedback storage for current scenario if not exists
+    if (!window.taskFeedback) {
+        window.taskFeedback = {};
+    }
+    if (!window.taskFeedback[currentScenario]) {
+        window.taskFeedback[currentScenario] = {};
+    }
+
+    // Initialize aircraft task cache for autocomplete
+    if (!window.aircraftTasks) {
+        window.aircraftTasks = {};
+    }
+
+    // Build aircraft task cache for smart autocomplete
+    buildAircraftTaskCache();
+}
+
+// Build cache of tasks by aircraft for smart autocomplete
+// Build cache of tasks by aircraft for smart autocomplete
+function buildAircraftTaskCache() {
+    window.aircraftTasks = {};
+
+    if (scenarioData && scenarioData.tasks) {
+        scenarioData.tasks.forEach(task => {
+            const product = task.product;
+            if (!window.aircraftTasks[product]) {
+                window.aircraftTasks[product] = [];
+            }
+            window.aircraftTasks[product].push({
+                taskId: task.taskId,
+                type: task.type,
+                team: task.team,
+                startTime: task.startTime,
+                dependencies: task.dependencies || []
+            });
+        });
+    }
+
+    console.log('Built aircraft task cache:', Object.keys(window.aircraftTasks).map(k => `${k}: ${window.aircraftTasks[k].length} tasks`));
+}
+
+
+// Enhanced Individual Mechanic View with feedback forms
+function displayIndividualViewWithFeedback(mechanicSchedule, mechanicId) {
+    const mechanicNameElement = document.getElementById('mechanicName');
+    const timeline = document.getElementById('mechanicTimeline');
+
+    if (!timeline) return;
+
+    if (!mechanicSchedule) {
+        if (mechanicNameElement) {
+            mechanicNameElement.textContent = 'Task Schedule';
+        }
+        timeline.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: #6b7280;">
+                <div style="font-size: 48px; margin-bottom: 10px;">📋</div>
+                <div style="font-size: 16px; font-weight: 500;">No Tasks Assigned</div>
+                <div style="font-size: 14px; margin-top: 5px;">Use the Team Lead view to assign tasks</div>
+            </div>
+        `;
+        return;
+    }
+
+    const mechanicTasks = mechanicSchedule.tasks || [];
+
+    // Update header
+    if (mechanicNameElement) {
+        mechanicNameElement.textContent =
+            `Task Schedule for ${mechanicSchedule.displayName || mechanicId}`;
+    }
+
+    // Build enhanced timeline with feedback forms
+    timeline.innerHTML = '';
+
+    if (mechanicTasks.length === 0) {
+        timeline.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: #6b7280;">
+                <div style="font-size: 48px; margin-bottom: 10px;">📋</div>
+                <div style="font-size: 16px; font-weight: 500;">No Tasks Assigned</div>
+                <div style="font-size: 14px; margin-top: 5px;">Use the Team Lead view to assign tasks</div>
+            </div>
+        `;
+        return;
+    }
+
+    // Add feedback summary header
+    const feedbackSummary = document.createElement('div');
+    feedbackSummary.style.cssText = `
+        background: #f0f9ff;
+        border: 1px solid #3b82f6;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 20px;
+    `;
+
+    const completedFeedback = mechanicTasks.filter(task =>
+        taskFeedback[currentScenario] &&
+        taskFeedback[currentScenario][`${mechanicId}_${task.taskId}`]
+    ).length;
+
+    feedbackSummary.innerHTML = `
+        <strong>Feedback Status:</strong> ${completedFeedback}/${mechanicTasks.length} tasks have feedback
+        <button onclick="exportMechanicFeedback('${mechanicId}')"
+                style="float: right; padding: 4px 8px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+            Export My Feedback
+        </button>
+    `;
+    timeline.appendChild(feedbackSummary);
+
+    // Group tasks by date
+    const tasksByDate = {};
+    mechanicTasks.forEach(task => {
+        const date = new Date(task.startTime).toDateString();
+        if (!tasksByDate[date]) {
+            tasksByDate[date] = [];
+        }
+        tasksByDate[date].push(task);
+    });
+
+    // Display tasks with feedback forms
+    Object.entries(tasksByDate).forEach(([date, tasks]) => {
+        const dateHeader = document.createElement('div');
+        dateHeader.style.cssText = `
+            background: #f3f4f6;
+            padding: 8px 12px;
+            font-weight: 600;
+            color: #374151;
+            margin: 10px 0 5px 0;
+            border-radius: 6px;
+        `;
+        dateHeader.textContent = date;
+        timeline.appendChild(dateHeader);
+
+        tasks.forEach(task => {
+            const taskContainer = createTaskFeedbackItem(task, mechanicId);
+            timeline.appendChild(taskContainer);
+        });
+    });
+}
+
+// Create individual task item with feedback form
+function createTaskFeedbackItem(task, mechanicId) {
+    const container = document.createElement('div');
+    container.className = 'task-feedback-item';
+    container.style.cssText = `
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        background: white;
+        overflow: hidden;
+    `;
+
+    const startTime = new Date(task.startTime);
+    const feedbackKey = `${mechanicId}_${task.taskId}`;
+    const existingFeedback = taskFeedback[currentScenario] && taskFeedback[currentScenario][feedbackKey];
+
+    let borderColor = '#3b82f6';
+    let typeIcon = '🔧';
+
+    if (task.type === 'Quality Inspection') {
+        borderColor = '#10b981';
+        typeIcon = '✓';
+    } else if (task.type === 'Late Part') {
+        borderColor = '#f59e0b';
+        typeIcon = '📦';
+    } else if (task.type === 'Rework') {
+        borderColor = '#ef4444';
+        typeIcon = '🔄';
+    } else if (task.isCustomerTask) {
+        borderColor = '#8b5cf6';
+        typeIcon = '👤';
+    }
+
+    container.innerHTML = `
+        <div style="border-left: 4px solid ${borderColor}; padding: 15px;">
+            <!-- Task Header -->
+            <div style="display: flex; justify-content: between; align-items: flex-start; margin-bottom: 10px;">
+                <div style="flex: 1;">
+                    <div style="font-weight: 600; font-size: 14px; color: #1f2937; margin-bottom: 4px;">
+                        ${typeIcon} Task ${task.taskId} - ${task.type}
+                    </div>
+                    <div style="color: #6b7280; font-size: 12px;">
+                        📦 ${task.product} • ⏰ ${formatTime(startTime)} • ⌛ ${task.duration} minutes
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    ${existingFeedback ?
+                        `<span style="background: #10b981; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px;">
+                            Feedback Submitted
+                        </span>` :
+                        `<span style="background: #f59e0b; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px;">
+                            Feedback Needed
+                        </span>`
+                    }
+                </div>
+            </div>
+
+            <!-- Feedback Form -->
+            <div id="feedback-form-${feedbackKey}" style="background: #f9fafb; padding: 12px; border-radius: 6px; border: 1px solid #e5e7eb;">
+                <div style="font-weight: 500; margin-bottom: 10px; color: #374151;">
+                    Task Status & Feedback:
+                </div>
+
+                <!-- Status Selection -->
+                <div style="margin-bottom: 12px;">
+                    <label style="display: flex; align-items: center; margin-bottom: 6px; cursor: pointer;">
+                        <input type="radio" name="status-${feedbackKey}" value="completed"
+                               ${!existingFeedback || existingFeedback.status === 'completed' ? 'checked' : ''}
+                               onchange="toggleFeedbackFields('${feedbackKey}')"
+                               style="margin-right: 6px;">
+                        <span style="color: #10b981; font-weight: 500;">✓ Completed On Time</span>
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="radio" name="status-${feedbackKey}" value="delayed"
+                               ${existingFeedback && existingFeedback.status === 'delayed' ? 'checked' : ''}
+                               onchange="toggleFeedbackFields('${feedbackKey}')"
+                               style="margin-right: 6px;">
+                        <span style="color: #ef4444; font-weight: 500;">⚠️ Delayed or Had Issues</span>
+                    </label>
+                </div>
+
+                <!-- Delay Reason Fields (shown only when delayed) -->
+                <div id="delay-fields-${feedbackKey}" style="display: ${existingFeedback && existingFeedback.status === 'delayed' ? 'block' : 'none'};">
+                    <!-- Delay Reason -->
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; font-weight: 500; margin-bottom: 4px; color: #374151;">
+                            Reason for Delay:
+                        </label>
+                        <select id="reason-${feedbackKey}" style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;">
+                            <option value="">Select Reason</option>
+                            <option value="predecessor" ${existingFeedback?.reason === 'predecessor' ? 'selected' : ''}>
+                                Held by Predecessor Task
+                            </option>
+                            <option value="awaiting-quality" ${existingFeedback?.reason === 'awaiting-quality' ? 'selected' : ''}>
+                                Awaiting Quality Inspection
+                            </option>
+                            <option value="awaiting-customer" ${existingFeedback?.reason === 'awaiting-customer' ? 'selected' : ''}>
+                                Awaiting Customer Inspection
+                            </option>
+                            <option value="found-parts" ${existingFeedback?.reason === 'found-parts' ? 'selected' : ''}>
+                                Searched for Parts but Found Them
+                            </option>
+                            <option value="missing-parts" ${existingFeedback?.reason === 'missing-parts' ? 'selected' : ''}>
+                                Missing Parts/Had to Order Parts
+                            </option>
+                            <option value="caused-damage" ${existingFeedback?.reason === 'caused-damage' ? 'selected' : ''}>
+                                Caused Damage/Need Rework Tag
+                            </option>
+                            <option value="missing-tooling" ${existingFeedback?.reason === 'missing-tooling' ? 'selected' : ''}>
+                                Tooling Missing
+                            </option>
+                            <option value="other" ${existingFeedback?.reason === 'other' ? 'selected' : ''}>
+                                Other (specify below)
+                            </option>
+                        </select>
+                    </div>
+
+                    <!-- Predecessor Task Field (shown only for predecessor reason) -->
+                    <div id="predecessor-field-${feedbackKey}"
+                         style="margin-bottom: 10px; display: ${existingFeedback?.reason === 'predecessor' ? 'block' : 'none'};">
+                        <label style="display: block; font-weight: 500; margin-bottom: 4px; color: #374151;">
+                            Predecessor Task ID:
+                        </label>
+                        <input type="text"
+                               id="predecessor-${feedbackKey}"
+                               placeholder="Start typing task ID (e.g., A_12, B_45)..."
+                               value="${existingFeedback?.predecessorTask || ''}"
+                               oninput="handlePredecessorAutocomplete(this, '${task.product}')"
+                               style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;">
+                        <div id="predecessor-suggestions-${feedbackKey}" class="autocomplete-suggestions"></div>
+                    </div>
+
+                    <!-- Additional Notes -->
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; font-weight: 500; margin-bottom: 4px; color: #374151;">
+                            Additional Notes:
+                        </label>
+                        <textarea id="notes-${feedbackKey}"
+                                  placeholder="Additional details about the delay or issue..."
+                                  style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; resize: vertical; min-height: 60px;">${existingFeedback?.notes || ''}</textarea>
+                    </div>
+
+                    <!-- Delay Duration -->
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; font-weight: 500; margin-bottom: 4px; color: #374151;">
+                            Estimated Delay (minutes):
+                        </label>
+                        <input type="number"
+                               id="delay-${feedbackKey}"
+                               placeholder="e.g., 30"
+                               value="${existingFeedback?.delayMinutes || ''}"
+                               style="width: 100px; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px;">
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div style="margin-top: 12px; display: flex; gap: 8px;">
+                    <button onclick="saveFeedback('${feedbackKey}', '${task.taskId}', '${mechanicId}')"
+                            style="background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                        Save Feedback
+                    </button>
+                    ${existingFeedback ?
+                        `<button onclick="clearFeedback('${feedbackKey}')"
+                                style="background: #6b7280; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            Clear Feedback
+                        </button>` : ''
+                    }
+                </div>
+            </div>
+        </div>
+    `;
+
+    return container;
+}
+
+function setupReasonDropdownHandler(feedbackKey) {
+    const reasonSelect = document.getElementById(`reason-${feedbackKey}`);
+    const predecessorField = document.getElementById(`predecessor-field-${feedbackKey}`);
+
+    if (reasonSelect && predecessorField) {
+        reasonSelect.addEventListener('change', function() {
+            console.log(`Reason changed to: ${this.value}`);
+            if (this.value === 'predecessor') {
+                predecessorField.style.display = 'block';
+                // Focus the input field
+                const input = document.getElementById(`predecessor-${feedbackKey}`);
+                if (input) {
+                    setTimeout(() => input.focus(), 100);
+                }
+            } else {
+                predecessorField.style.display = 'none';
+            }
+        });
+
+        // Trigger the change event if predecessor is already selected
+        if (reasonSelect.value === 'predecessor') {
+            reasonSelect.dispatchEvent(new Event('change'));
+        }
+    }
+}
+
+// Toggle feedback fields based on status
+function toggleFeedbackFields(feedbackKey) {
+    const delayFields = document.getElementById(`delay-fields-${feedbackKey}`);
+    const delayedRadio = document.querySelector(`input[name="status-${feedbackKey}"][value="delayed"]`);
+
+    if (delayFields) {
+        delayFields.style.display = delayedRadio.checked ? 'block' : 'none';
+    }
+}
+
+// Handle predecessor task autocomplete
+// 2. Enhanced autocomplete function with better positioning
+function handlePredecessorAutocomplete(input, currentProduct) {
+    const query = input.value.toLowerCase().trim();
+    const feedbackKey = input.id.replace('predecessor-', '');
+    let suggestionsContainer = document.getElementById(`predecessor-suggestions-${feedbackKey}`);
+
+    // Create suggestions container if it doesn't exist
+    if (!suggestionsContainer) {
+        suggestionsContainer = document.createElement('div');
+        suggestionsContainer.id = `predecessor-suggestions-${feedbackKey}`;
+        suggestionsContainer.className = 'autocomplete-suggestions';
+        input.parentNode.appendChild(suggestionsContainer);
+    }
+
+    if (query.length < 2) {
+        suggestionsContainer.innerHTML = '';
+        suggestionsContainer.style.display = 'none';
+        return;
+    }
+
+    // Get relevant tasks from the same aircraft/product
+    const relevantTasks = window.aircraftTasks[currentProduct] || [];
+
+    console.log(`Searching for "${query}" in ${relevantTasks.length} tasks for ${currentProduct}`);
+
+    // Enhanced matching: prioritize partial matches anywhere in task ID
+    const matches = relevantTasks
+        .filter(task => {
+            const taskId = task.taskId.toLowerCase();
+            const taskType = task.type.toLowerCase();
+            const taskTeam = (task.team || '').toLowerCase();
+
+            // Match anywhere in task ID (most common)
+            if (taskId.includes(query)) return true;
+
+            // Match task type
+            if (taskType.includes(query)) return true;
+
+            // Match team name
+            if (taskTeam.includes(query)) return true;
+
+            // Special handling for numeric queries (common pattern)
+            if (query.match(/^\d+$/)) {
+                // Split task ID by common separators and check each part
+                const parts = taskId.split(/[_\-\s]+/);
+                return parts.some(part => part.includes(query));
+            }
+
+            return false;
+        })
+        .sort((a, b) => {
+            const taskIdA = a.taskId.toLowerCase();
+            const taskIdB = b.taskId.toLowerCase();
+
+            // Priority 1: Exact substring match in task ID
+            const aTaskMatch = taskIdA.indexOf(query);
+            const bTaskMatch = taskIdB.indexOf(query);
+
+            if (aTaskMatch !== -1 && bTaskMatch === -1) return -1;
+            if (aTaskMatch === -1 && bTaskMatch !== -1) return 1;
+            if (aTaskMatch !== -1 && bTaskMatch !== -1) {
+                // Prefer matches earlier in the string
+                if (aTaskMatch !== bTaskMatch) return aTaskMatch - bTaskMatch;
+            }
+
+            // Priority 2: Earlier start times (more likely predecessors)
+            return new Date(a.startTime) - new Date(b.startTime);
+        })
+        .slice(0, 8); // Limit to 8 suggestions
+
+    if (matches.length === 0) {
+        suggestionsContainer.innerHTML = `
+            <div style="padding: 8px; color: #6b7280; font-size: 12px; background: white; border: 1px solid #e5e7eb;">
+                <strong>No matches found for "${query}"</strong>
+                <div style="font-size: 11px; margin-top: 4px; color: #9ca3af;">
+                    Try typing:
+                    <br>• Task ID numbers (e.g., "401", "25")
+                    <br>• Task type (e.g., "production", "quality")
+                    <br>• Partial task names
+                </div>
+            </div>
+        `;
+        suggestionsContainer.style.display = 'block';
+        return;
+    }
+
+    console.log(`Found ${matches.length} matches for "${query}"`);
+
+    const suggestionsHTML = matches.map(task => {
+        const startDate = new Date(task.startTime);
+        const taskIdMatch = task.taskId.toLowerCase().indexOf(query);
+
+        // Highlight the matching part
+        let displayTaskId = task.taskId;
+        if (taskIdMatch !== -1) {
+            const before = task.taskId.substring(0, taskIdMatch);
+            const match = task.taskId.substring(taskIdMatch, taskIdMatch + query.length);
+            const after = task.taskId.substring(taskIdMatch + query.length);
+            displayTaskId = `${before}<mark style="background: #fef3c7; padding: 1px 2px;">${match}</mark>${after}`;
+        }
+
+        return `
+            <div class="autocomplete-item"
+                 onclick="selectPredecessorTask('${feedbackKey}', '${task.taskId.replace(/'/g, "\\'")}')"
+                 style="padding: 8px; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 12px; background: white; transition: background 0.2s;">
+                <div style="font-weight: 600; margin-bottom: 2px;">
+                    ${displayTaskId} - ${task.type}
+                </div>
+                <div style="color: #6b7280; font-size: 11px; display: flex; gap: 8px;">
+                    <span>📋 ${task.team}</span>
+                    <span>📅 ${startDate.toLocaleDateString()}</span>
+                    <span>⏰ ${startDate.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'})}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    suggestionsContainer.innerHTML = suggestionsHTML;
+
+    // Position the suggestions container
+    const inputRect = input.getBoundingClientRect();
+    suggestionsContainer.style.cssText = `
+        display: block;
+        position: absolute;
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -1px rgb(0 0 0 / 0.06);
+        z-index: 1000;
+        max-height: 300px;
+        overflow-y: auto;
+        width: ${Math.max(input.offsetWidth, 350)}px;
+        margin-top: 2px;
+        left: 0;
+        top: 100%;
+    `;
+
+    // Add hover effects
+    suggestionsContainer.addEventListener('mouseover', function(e) {
+        if (e.target.classList.contains('autocomplete-item')) {
+            e.target.style.background = '#f3f4f6';
+        }
+    });
+
+    suggestionsContainer.addEventListener('mouseout', function(e) {
+        if (e.target.classList.contains('autocomplete-item')) {
+            e.target.style.background = 'white';
+        }
+    });
+}
+
+// Select predecessor task from autocomplete
+// 3. Improved task selection function
+function selectPredecessorTask(feedbackKey, taskId) {
+    const input = document.getElementById(`predecessor-${feedbackKey}`);
+    const suggestionsContainer = document.getElementById(`predecessor-suggestions-${feedbackKey}`);
+
+    if (input) {
+        input.value = taskId;
+        // Add visual feedback
+        input.style.background = '#f0fdf4';
+        input.style.borderColor = '#10b981';
+        setTimeout(() => {
+            input.style.background = '';
+            input.style.borderColor = '#d1d5db';
+        }, 1500);
+    }
+
+    if (suggestionsContainer) {
+        suggestionsContainer.style.display = 'none';
+    }
+
+    console.log(`Selected predecessor task: ${taskId}`);
+}
+
+// 4. Close suggestions when clicking outside
+document.addEventListener('click', function(e) {
+    const suggestions = document.querySelectorAll('.autocomplete-suggestions');
+    suggestions.forEach(container => {
+        if (!container.contains(e.target) && !e.target.classList.contains('predecessor-input')) {
+            container.style.display = 'none';
+        }
+    });
+});
+
+
+
+// Show/hide predecessor field based on reason selection
+function setupReasonChangeHandler(feedbackKey) {
+    const reasonSelect = document.getElementById(`reason-${feedbackKey}`);
+    const predecessorField = document.getElementById(`predecessor-field-${feedbackKey}`);
+
+    if (reasonSelect && predecessorField) {
+        reasonSelect.addEventListener('change', function() {
+            predecessorField.style.display = this.value === 'predecessor' ? 'block' : 'none';
+        });
+    }
+}
+
+// Save feedback for a specific task
+function saveFeedback(feedbackKey, taskId, mechanicId) {
+    const statusRadios = document.querySelectorAll(`input[name="status-${feedbackKey}"]`);
+    const reasonSelect = document.getElementById(`reason-${feedbackKey}`);
+    const predecessorInput = document.getElementById(`predecessor-${feedbackKey}`);
+    const notesInput = document.getElementById(`notes-${feedbackKey}`);
+    const delayInput = document.getElementById(`delay-${feedbackKey}`);
+
+    let status = 'completed';
+    for (const radio of statusRadios) {
+        if (radio.checked) {
+            status = radio.value;
+            break;
+        }
+    }
+
+    // Validation for delayed tasks
+    if (status === 'delayed') {
+        const reason = reasonSelect ? reasonSelect.value : '';
+        if (!reason) {
+            alert('Please select a reason for the delay');
+            reasonSelect.focus();
+            return;
+        }
+
+        if (reason === 'predecessor') {
+            const predecessorTask = predecessorInput ? predecessorInput.value.trim() : '';
+            if (!predecessorTask) {
+                alert('Please specify the predecessor task that caused the delay');
+                predecessorInput.focus();
+                return;
+            }
+        }
+    }
+
+    const feedbackData = {
+        taskId: taskId,
+        mechanicId: mechanicId,
+        status: status,
+        timestamp: new Date().toISOString(),
+        scenario: currentScenario,
+        mechanicName: getMechanicDisplayName(mechanicId)
+    };
+
+    if (status === 'delayed') {
+        feedbackData.reason = reasonSelect ? reasonSelect.value : '';
+        feedbackData.reasonText = getReasonDisplayText(feedbackData.reason);
+        feedbackData.predecessorTask = predecessorInput ? predecessorInput.value.trim() : '';
+        feedbackData.notes = notesInput ? notesInput.value.trim() : '';
+        feedbackData.delayMinutes = delayInput ? parseInt(delayInput.value) || 0 : 0;
+    }
+
+    // Initialize feedback storage if needed
+    if (!window.taskFeedback[currentScenario]) {
+        window.taskFeedback[currentScenario] = {};
+    }
+
+    // Save feedback
+    window.taskFeedback[currentScenario][feedbackKey] = feedbackData;
+
+    // Save to localStorage for persistence
+    try {
+        localStorage.setItem(`taskFeedback_${currentScenario}`, JSON.stringify(window.taskFeedback[currentScenario]));
+    } catch (e) {
+        console.warn('Could not save feedback to localStorage:', e);
+    }
+
+    // Visual feedback
+    showNotification('Feedback saved successfully!', 'success');
+
+    // Update the status indicator
+    const form = document.getElementById(`feedback-form-${feedbackKey}`);
+    if (form) {
+        const statusSpan = form.parentElement.querySelector('span[style*="background"]');
+        if (statusSpan) {
+            statusSpan.style.background = '#10b981';
+            statusSpan.textContent = 'Feedback Submitted';
+        }
+    }
+
+    // Update the feedback summary
+    updateFeedbackSummary();
+
+    console.log('Saved feedback:', feedbackData);
+}
+
+function getMechanicDisplayName(mechanicId) {
+    const schedule = savedAssignments[currentScenario]?.mechanicSchedules?.[mechanicId];
+    return schedule ? schedule.displayName : mechanicId;
+}
+
+// Get display text for delay reasons
+function getReasonDisplayText(reason) {
+    const reasonMap = {
+        'predecessor': 'Held by Predecessor Task',
+        'awaiting-quality': 'Awaiting Quality Inspection',
+        'awaiting-customer': 'Awaiting Customer Inspection',
+        'found-parts': 'Searched for Parts but Found Them',
+        'missing-parts': 'Missing Parts/Had to Order Parts',
+        'caused-damage': 'Caused Damage/Need Rework Tag',
+        'missing-tooling': 'Tooling Missing',
+        'other': 'Other'
+    };
+    return reasonMap[reason] || reason;
+}
+
+// Update feedback summary at top of timeline
+function updateFeedbackSummary() {
+    const timeline = document.getElementById('mechanicTimeline');
+    const summaryDiv = timeline.querySelector('.feedback-summary');
+
+    if (summaryDiv) {
+        const mechanicSelect = document.getElementById('mechanicSelect');
+        const currentMechanic = mechanicSelect ? mechanicSelect.value : null;
+
+        if (currentMechanic && !['all', 'all-mechanics', 'all-quality', 'all-customer', 'none'].includes(currentMechanic)) {
+            const schedule = savedAssignments[currentScenario]?.mechanicSchedules?.[currentMechanic];
+            const tasks = schedule ? schedule.tasks : [];
+
+            const completedFeedback = tasks.filter(task => {
+                const feedbackKey = `${currentMechanic}_${task.taskId}`;
+                return window.taskFeedback[currentScenario] && window.taskFeedback[currentScenario][feedbackKey];
+            }).length;
+
+            const delayedTasks = tasks.filter(task => {
+                const feedbackKey = `${currentMechanic}_${task.taskId}`;
+                const feedback = window.taskFeedback[currentScenario] && window.taskFeedback[currentScenario][feedbackKey];
+                return feedback && feedback.status === 'delayed';
+            }).length;
+
+            summaryDiv.innerHTML = `
+                <strong>Feedback Status:</strong> ${completedFeedback}/${tasks.length} tasks have feedback
+                ${delayedTasks > 0 ? ` • <span style="color: #ef4444;">${delayedTasks} delays reported</span>` : ''}
+                <button onclick="exportMechanicFeedback('${currentMechanic}')"
+                        style="float: right; padding: 4px 8px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                    Export My Feedback
+                </button>
+            `;
+        }
+    }
+}
+
+
+// Load feedback from localStorage on page load
+function loadSavedFeedback() {
+    try {
+        const saved = localStorage.getItem(`taskFeedback_${currentScenario}`);
+        if (saved) {
+            if (!window.taskFeedback) window.taskFeedback = {};
+            window.taskFeedback[currentScenario] = JSON.parse(saved);
+            console.log(`Loaded ${Object.keys(window.taskFeedback[currentScenario]).length} feedback entries for ${currentScenario}`);
+        }
+    } catch (e) {
+        console.warn('Could not load feedback from localStorage:', e);
+    }
+}
+
+
+
+// Clear feedback for a task
+function clearFeedback(feedbackKey) {
+    if (confirm('Are you sure you want to clear this feedback?')) {
+        if (taskFeedback[currentScenario]) {
+            delete taskFeedback[currentScenario][feedbackKey];
+        }
+
+        // Reset form
+        const statusRadios = document.querySelectorAll(`input[name="status-${feedbackKey}"]`);
+        const reasonSelect = document.getElementById(`reason-${feedbackKey}`);
+        const predecessorInput = document.getElementById(`predecessor-${feedbackKey}`);
+        const notesInput = document.getElementById(`notes-${feedbackKey}`);
+        const delayInput = document.getElementById(`delay-${feedbackKey}`);
+
+        // Reset to default values
+        if (statusRadios[0]) statusRadios[0].checked = true;
+        if (reasonSelect) reasonSelect.value = '';
+        if (predecessorInput) predecessorInput.value = '';
+        if (notesInput) notesInput.value = '';
+        if (delayInput) delayInput.value = '';
+
+        // Hide delay fields
+        toggleFeedbackFields(feedbackKey);
+
+        showNotification('Feedback cleared', 'info');
+    }
+}
+
+// Export individual mechanic's feedback
+// Enhanced export function with better formatting
+function exportMechanicFeedback(mechanicId) {
+    const mechanicSchedule = savedAssignments[currentScenario]?.mechanicSchedules?.[mechanicId];
+    if (!mechanicSchedule) {
+        alert('No schedule found for this mechanic');
+        return;
+    }
+
+    const tasks = mechanicSchedule.tasks || [];
+    const feedbackData = window.taskFeedback[currentScenario] || {};
+
+    let csvContent = `Individual Mechanic Task Feedback Report\n`;
+    csvContent += `=".join('=', repeat=50}\n`;
+    csvContent += `Mechanic: ${mechanicSchedule.displayName || mechanicId}\n`;
+    csvContent += `Team: ${mechanicSchedule.team || 'Unknown'} (${mechanicSchedule.skill || 'No Skill'})\n`;
+    csvContent += `Scenario: ${currentScenario.toUpperCase()}\n`;
+    csvContent += `Report Generated: ${new Date().toLocaleString()}\n`;
+    csvContent += `Total Assigned Tasks: ${tasks.length}\n\n`;
+
+    // Summary statistics
+    const completedTasks = tasks.filter(task => {
+        const feedback = feedbackData[`${mechanicId}_${task.taskId}`];
+        return feedback && feedback.status === 'completed';
+    }).length;
+
+    const delayedTasks = tasks.filter(task => {
+        const feedback = feedbackData[`${mechanicId}_${task.taskId}`];
+        return feedback && feedback.status === 'delayed';
+    }).length;
+
+    const noFeedbackTasks = tasks.length - completedTasks - delayedTasks;
+
+    const totalDelayMinutes = tasks.reduce((sum, task) => {
+        const feedback = feedbackData[`${mechanicId}_${task.taskId}`];
+        return sum + (feedback?.delayMinutes || 0);
+    }, 0);
+
+    csvContent += `PERFORMANCE SUMMARY:\n`;
+    csvContent += `Completed On Time: ${completedTasks} (${(completedTasks/tasks.length*100).toFixed(1)}%)\n`;
+    csvContent += `Delayed/Issues: ${delayedTasks} (${(delayedTasks/tasks.length*100).toFixed(1)}%)\n`;
+    csvContent += `No Feedback: ${noFeedbackTasks} (${(noFeedbackTasks/tasks.length*100).toFixed(1)}%)\n`;
+    csvContent += `Total Delay Time: ${totalDelayMinutes} minutes (${(totalDelayMinutes/60).toFixed(1)} hours)\n\n`;
+
+    // Detailed task data
+    csvContent += `DETAILED TASK FEEDBACK:\n`;
+    csvContent += `Task ID,Type,Product,Scheduled Start,Duration (min),Status,Delay Reason,Predecessor Task,Delay Duration (min),Notes,Feedback Submitted\n`;
+
+    tasks
+        .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+        .forEach(task => {
+            const feedbackKey = `${mechanicId}_${task.taskId}`;
+            const feedback = feedbackData[feedbackKey];
+
+            const status = feedback ? feedback.status : 'No Feedback';
+            const reason = feedback?.reasonText || '';
+            const predecessorTask = feedback?.predecessorTask || '';
+            const delayMinutes = feedback?.delayMinutes || '';
+            const notes = (feedback?.notes || '').replace(/"/g, '""'); // Escape quotes
+            const feedbackDate = feedback ? new Date(feedback.timestamp).toLocaleString() : '';
+
+            csvContent += `"${task.taskId}","${task.type}","${task.product}","${new Date(task.startTime).toLocaleString()}","${task.duration}","${status}","${reason}","${predecessorTask}","${delayMinutes}","${notes}","${feedbackDate}"\n`;
+        });
+
+    // Delay analysis by reason
+    const delayReasons = {};
+    tasks.forEach(task => {
+        const feedback = feedbackData[`${mechanicId}_${task.taskId}`];
+        if (feedback && feedback.status === 'delayed' && feedback.reasonText) {
+            delayReasons[feedback.reasonText] = (delayReasons[feedback.reasonText] || 0) + 1;
+        }
+    });
+
+    if (Object.keys(delayReasons).length > 0) {
+        csvContent += `\nDELAY REASONS BREAKDOWN:\n`;
+        Object.entries(delayReasons)
+            .sort(([,a], [,b]) => b - a)
+            .forEach(([reason, count]) => {
+                csvContent += `${reason}: ${count} occurrence${count !== 1 ? 's' : ''}\n`;
+            });
+    }
+
+    // Download the CSV
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+
+    const mechanicName = (mechanicSchedule.displayName || mechanicId).replace(/[^a-zA-Z0-9]/g, '_');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    link.setAttribute('download', `mechanic_feedback_${mechanicName}_${currentScenario}_${dateStr}.csv`);
+
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    showNotification(`Feedback report exported for ${mechanicSchedule.displayName}`, 'success');
+}
+
+
+// Add this function to populate the mechanic dropdown
+function populateMechanicDropdown() {
+    const mechanicSelect = document.getElementById('mechanicSelect');
+    if (!mechanicSelect || !scenarioData?.teamCapacities) return;
+
+    // Store current selection before rebuilding
+    const currentSelection = mechanicSelect.value;
+    console.log('Populating mechanic dropdown, current selection:', currentSelection);
+
+    // Clear dropdown
+    mechanicSelect.innerHTML = '<option value="none">Select a worker/team...</option>';
+
+    // Add aggregate options
+    mechanicSelect.innerHTML += `
+        <option value="all">All Workers</option>
+        <option value="all-mechanics">All Mechanics</option>
+        <option value="all-quality">All Quality Inspectors</option>
+        <option value="all-customer">All Customer Inspectors</option>
+    `;
+
+    // Group mechanics by team type
+    const mechanicTeams = new Map();
+    const qualityTeams = new Map();
+    const customerTeams = new Map();
+
+    // Process team capacities to build worker lists
+    Object.entries(scenarioData.teamCapacities).forEach(([teamSkill, capacity]) => {
+        const skillMatch = teamSkill.match(/^(.+?)\s*\((.+?)\)\s*$/);
+        let baseTeam = skillMatch ? skillMatch[1].trim() : teamSkill;
+        let skill = skillMatch ? skillMatch[2].trim() : null;
+
+        const isCustomer = baseTeam.toLowerCase().includes('customer');
+        const isQuality = baseTeam.toLowerCase().includes('quality');
+
+        for (let i = 1; i <= capacity; i++) {
+            const mechId = `${teamSkill}_${i}`;
+            let displayName;
+
+            if (isCustomer) {
+                displayName = `Customer #${i} - ${baseTeam}${skill ? ` (${skill})` : ''}`;
+                customerTeams.set(mechId, displayName);
+            } else if (isQuality) {
+                displayName = `Inspector #${i} - ${baseTeam}${skill ? ` (${skill})` : ''}`;
+                qualityTeams.set(mechId, displayName);
+            } else {
+                displayName = `Mechanic #${i} - ${baseTeam}${skill ? ` (${skill})` : ''}`;
+                mechanicTeams.set(mechId, displayName);
+            }
+        }
+    });
+
+    // Add Mechanic Teams optgroup
+    if (mechanicTeams.size > 0) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = 'Mechanic Teams';
+
+        // Sort by team name and then by number
+        const sortedMechanics = Array.from(mechanicTeams.entries()).sort((a, b) => {
+            const [idA, nameA] = a;
+            const [idB, nameB] = b;
+            return nameA.localeCompare(nameB);
+        });
+
+        sortedMechanics.forEach(([mechId, displayName]) => {
+            const option = document.createElement('option');
+            option.value = mechId;
+            option.textContent = displayName;
+            optgroup.appendChild(option);
+        });
+        mechanicSelect.appendChild(optgroup);
+    }
+
+    // Add Quality Teams optgroup
+    if (qualityTeams.size > 0) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = 'Quality Teams';
+
+        const sortedQuality = Array.from(qualityTeams.entries()).sort((a, b) => {
+            const [idA, nameA] = a;
+            const [idB, nameB] = b;
+            return nameA.localeCompare(nameB);
+        });
+
+        sortedQuality.forEach(([mechId, displayName]) => {
+            const option = document.createElement('option');
+            option.value = mechId;
+            option.textContent = displayName;
+            optgroup.appendChild(option);
+        });
+        mechanicSelect.appendChild(optgroup);
+    }
+
+    // Add Customer Teams optgroup
+    if (customerTeams.size > 0) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = 'Customer Teams';
+
+        const sortedCustomer = Array.from(customerTeams.entries()).sort((a, b) => {
+            const [idA, nameA] = a;
+            const [idB, nameB] = b;
+            return nameA.localeCompare(nameB);
+        });
+
+        sortedCustomer.forEach(([mechId, displayName]) => {
+            const option = document.createElement('option');
+            option.value = mechId;
+            option.textContent = displayName;
+            optgroup.appendChild(option);
+        });
+        mechanicSelect.appendChild(optgroup);
+    }
+
+    // Restore selection if it still exists
+    if (currentSelection && Array.from(mechanicSelect.options).some(opt => opt.value === currentSelection)) {
+        mechanicSelect.value = currentSelection;
+        console.log('Restored selection:', currentSelection);
+    } else if (currentSelection && currentSelection !== 'none') {
+        console.log('Previous selection no longer available:', currentSelection);
+        mechanicSelect.value = 'none';
+    }
+
+    // Remove any existing event listeners to prevent duplicates
+    mechanicSelect.removeEventListener('change', handleMechanicSelection);
+
+    // Add the event listener
+    mechanicSelect.addEventListener('change', handleMechanicSelection);
+
+    console.log(`Populated dropdown with ${mechanicTeams.size} mechanics, ${qualityTeams.size} quality, ${customerTeams.size} customer`);
+}
+
+function handleMechanicSelection() {
+    console.log('=== MECHANIC SELECTION ===');
+    console.log('Selected value:', this.value);
+
+    const selection = this.value;
+
+    if (!selection || selection === 'none') {
+        displayNoSelection();
+        return;
+    }
+
+    // Update mechanic schedules from current assignments
+    updateMechanicSchedulesFromAssignments();
+
+    if (selection === 'all' || selection === 'all-mechanics' || selection === 'all-quality' || selection === 'all-customer') {
+        console.log('Loading aggregated view for:', selection);
+        const viewData = getAggregatedTasks(selection, 'all');
+        displayAggregatedView(viewData, 'aggregate', selection);
+    } else {
+        console.log('Loading individual view for:', selection);
+        const mechanicSchedule = getIndividualMechanicTasks(selection);
+        displayIndividualViewWithFeedback(mechanicSchedule, selection);
+    }
+}
+
+// Function to update mechanic schedules from current assignments
+function updateMechanicSchedulesFromAssignments() {
+    if (!savedAssignments[currentScenario]) {
+        savedAssignments[currentScenario] = {};
+    }
+
+    if (!savedAssignments[currentScenario].mechanicSchedules) {
+        savedAssignments[currentScenario].mechanicSchedules = {};
+    }
+
+    // Clear existing schedules
+    savedAssignments[currentScenario].mechanicSchedules = {};
+
+    // Process all task assignments
+    Object.entries(savedAssignments[currentScenario]).forEach(([taskId, assignment]) => {
+        if (taskId === 'mechanicSchedules') return; // Skip the schedules object itself
+
+        if (assignment.mechanics && assignment.mechanics.length > 0) {
+            const task = scenarioData.tasks.find(t => t.taskId === taskId);
+            if (!task) return;
+
+            assignment.mechanics.forEach(mechanicId => {
+                if (!mechanicId) return; // Skip empty assignments
+
+                // Initialize mechanic schedule if needed
+                if (!savedAssignments[currentScenario].mechanicSchedules[mechanicId]) {
+                    // Parse the mechanic ID to get display info
+                    const parts = mechanicId.split('_');
+                    const teamSkill = parts.slice(0, -1).join('_');
+                    const position = parts[parts.length - 1];
+
+                    const skillMatch = teamSkill.match(/^(.+?)\s*\((.+?)\)\s*$/);
+                    let baseTeam = skillMatch ? skillMatch[1].trim() : teamSkill;
+                    let skill = skillMatch ? skillMatch[2].trim() : null;
+
+                    const isCustomer = baseTeam.toLowerCase().includes('customer');
+                    const isQuality = baseTeam.toLowerCase().includes('quality');
+
+                    let displayName;
+                    if (isCustomer) {
+                        displayName = `Customer #${position} - ${baseTeam}${skill ? ` (${skill})` : ''}`;
+                    } else if (isQuality) {
+                        displayName = `Inspector #${position} - ${baseTeam}${skill ? ` (${skill})` : ''}`;
+                    } else {
+                        displayName = `Mechanic #${position} - ${baseTeam}${skill ? ` (${skill})` : ''}`;
+                    }
+
+                    savedAssignments[currentScenario].mechanicSchedules[mechanicId] = {
+                        mechanicId: mechanicId,
+                        displayName: displayName,
+                        team: baseTeam,
+                        teamSkill: teamSkill,
+                        skill: skill,
+                        isCustomer: isCustomer,
+                        isQuality: isQuality,
+                        tasks: []
+                    };
+                }
+
+                // Add task to mechanic's schedule
+                savedAssignments[currentScenario].mechanicSchedules[mechanicId].tasks.push({
+                    taskId: taskId,
+                    startTime: task.startTime,
+                    endTime: task.endTime,
+                    type: task.type,
+                    product: task.product,
+                    duration: task.duration,
+                    team: task.team,
+                    teamSkill: assignment.teamSkill,
+                    skill: assignment.skill,
+                    isCustomerTask: assignment.isCustomerTask
+                });
+            });
+        }
+    });
+
+    // Sort tasks within each mechanic's schedule
+    Object.values(savedAssignments[currentScenario].mechanicSchedules).forEach(schedule => {
+        schedule.tasks.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+    });
+
+    console.log('Updated mechanic schedules:', savedAssignments[currentScenario].mechanicSchedules);
+}
+
+// Enhanced updateMechanicView that uses the new feedback system
+function updateMechanicView() {
+    if (!scenarioData) return;
+
+    console.log('updateMechanicView called with feedback system');
+
+    // Initialize feedback system
+    initializeFeedbackSystem();
+
+    // Populate dropdown only if it's empty or needs updating
+    const mechanicSelect = document.getElementById('mechanicSelect');
+    const needsPopulating = !mechanicSelect ||
+                           mechanicSelect.options.length <= 1 ||
+                           !mechanicSelect.hasAttribute('data-populated-for-scenario') ||
+                           mechanicSelect.getAttribute('data-populated-for-scenario') !== currentScenario;
+
+    if (needsPopulating) {
+        populateMechanicDropdown();
+        if (mechanicSelect) {
+            mechanicSelect.setAttribute('data-populated-for-scenario', currentScenario);
+        }
+    }
+
+    // Update mechanic schedules from current assignments
+    updateMechanicSchedulesFromAssignments();
+
+    // Handle current selection without changing it
+    const selection = mechanicSelect ? mechanicSelect.value : 'none';
+
+    if (!selection || selection === 'none') {
+        displayNoSelection();
+        return;
+    }
+
+    // Process the current selection - USE FEEDBACK VERSION for individual workers
+    if (selection === 'all' || selection === 'all-mechanics' || selection === 'all-quality' || selection === 'all-customer') {
+        const viewData = getAggregatedTasks(selection, 'all');
+        displayAggregatedView(viewData, 'aggregate', selection);
+    } else {
+        // For individual mechanics, use the feedback-enabled version
+        const mechanicSchedule = getIndividualMechanicTasks(selection);
+        displayIndividualViewWithFeedback(mechanicSchedule, selection);
+    }
+}
+
+// Add CSS for autocomplete
+const feedbackCSS = `
+<style>
+.task-feedback-item {
+    transition: all 0.2s ease;
+}
+
+.task-feedback-item:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.autocomplete-suggestions {
+    position: relative;
+}
+
+.autocomplete-item:hover {
+    background: #f3f4f6;
+}
+
+/* Hide autocomplete when clicking outside */
+.autocomplete-suggestions {
+    display: none;
+}
+
+.autocomplete-suggestions.active {
+    display: block;
+}
+
+/* Form styling improvements */
+input[type="radio"] {
+    margin-right: 8px;
+}
+
+select, input, textarea {
+    font-family: inherit;
+}
+
+button {
+    transition: all 0.2s ease;
+}
+
+button:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+</style>
+`;
+
+// Add CSS to document head
+if (!document.querySelector('#feedback-styles')) {
+    const styleElement = document.createElement('style');
+    styleElement.id = 'feedback-styles';
+    styleElement.innerHTML = feedbackCSS.replace(/<\/?style>/g, '');
+    document.head.appendChild(styleElement);
+}
+
+// Make functions globally available
+window.toggleFeedbackFields = toggleFeedbackFields;
+window.handlePredecessorAutocomplete = handlePredecessorAutocomplete;
+window.selectPredecessorTask = selectPredecessorTask;
+window.saveFeedback = saveFeedback;
+window.clearFeedback = clearFeedback;
+window.exportMechanicFeedback = exportMechanicFeedback;
+
+// Make functions globally available
+window.initializeFeedbackSystem = initializeFeedbackSystem;
+window.buildAircraftTaskCache = buildAircraftTaskCache;
+window.handlePredecessorAutocomplete = handlePredecessorAutocomplete;
+window.saveFeedback = saveFeedback;
+window.exportMechanicFeedback = exportMechanicFeedback;
+window.updateFeedbackSummary = updateFeedbackSummary;
+window.loadSavedFeedback = loadSavedFeedback;
+window.onScenarioChange = onScenarioChange;
+
+// Make functions globally available
+window.handlePredecessorAutocomplete = handlePredecessorAutocomplete;
+window.selectPredecessorTask = selectPredecessorTask;
+window.setupReasonDropdownHandler = setupReasonDropdownHandler;
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Load saved feedback for current scenario
+    loadSavedFeedback();
+
+    console.log('Enhanced Task Feedback System initialized');
+});
+
+console.log('Task Feedback System initialized successfully!');
+
 

@@ -912,6 +912,322 @@
                 padding: 0 10px;
             }
         }
+
+        /* Enhanced Task Feedback System Styles */
+        .task-feedback-item {
+            transition: all 0.2s ease;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            background: white;
+            overflow: hidden;
+        }
+
+        .task-feedback-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-color: #3b82f6;
+        }
+
+        .feedback-summary {
+            background: #f0f9ff;
+            border: 1px solid #3b82f6;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        /* Autocomplete Styles */
+        .autocomplete-suggestions {
+            position: relative;
+            z-index: 1000;
+        }
+
+        .autocomplete-item {
+            padding: 8px;
+            cursor: pointer;
+            border-bottom: 1px solid #f3f4f6;
+            font-size: 12px;
+            transition: background-color 0.2s ease;
+        }
+
+        .autocomplete-item:hover {
+            background: #f3f4f6;
+        }
+
+        .autocomplete-item:last-child {
+            border-bottom: none;
+        }
+
+        /* Form Enhancement Styles */
+        .feedback-form {
+            background: #f9fafb;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .feedback-form label {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .feedback-form input[type="radio"] {
+            margin-right: 8px;
+            transform: scale(1.1);
+        }
+
+        .feedback-form select,
+        .feedback-form input[type="text"],
+        .feedback-form input[type="number"],
+        .feedback-form textarea {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .feedback-form select:focus,
+        .feedback-form input:focus,
+        .feedback-form textarea:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .feedback-form textarea {
+            resize: vertical;
+            min-height: 60px;
+            max-height: 120px;
+        }
+
+        .feedback-form button {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            margin-right: 8px;
+        }
+
+        .feedback-form button:hover {
+            background: #059669;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .feedback-form button.secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .feedback-form button.secondary:hover {
+            background: #4b5563;
+        }
+
+        /* Status Indicators */
+        .status-completed {
+            color: #10b981;
+            font-weight: 600;
+        }
+
+        .status-delayed {
+            color: #ef4444;
+            font-weight: 600;
+        }
+
+        .status-no-feedback {
+            color: #f59e0b;
+            font-weight: 500;
+        }
+
+        /* Task Header Enhancements */
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        .task-info {
+            flex: 1;
+        }
+
+        .task-title {
+            font-weight: 600;
+            font-size: 14px;
+            color: #1f2937;
+            margin-bottom: 4px;
+        }
+
+        .task-details {
+            color: #6b7280;
+            font-size: 12px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .task-details span {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .feedback-status {
+            text-align: right;
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .feedback-status.submitted {
+            background: #10b981;
+            color: white;
+        }
+
+        .feedback-status.needed {
+            background: #f59e0b;
+            color: white;
+        }
+
+        /* Delay Fields Animation */
+        .delay-fields {
+            overflow: hidden;
+            transition: all 0.3s ease;
+            margin-bottom: 10px;
+        }
+
+        .delay-fields.hidden {
+            max-height: 0;
+            opacity: 0;
+            margin-bottom: 0;
+            padding: 0;
+        }
+
+        .delay-fields.visible {
+            max-height: 400px;
+            opacity: 1;
+        }
+
+        /* Form Field Groups */
+        .field-group {
+            margin-bottom: 10px;
+        }
+
+        .field-group label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 4px;
+            color: #374151;
+            font-size: 13px;
+        }
+
+        /* Predecessor Field Special Styling */
+        .predecessor-field {
+            position: relative;
+        }
+
+        .predecessor-input {
+            padding-right: 30px; /* Space for loading indicator */
+        }
+
+        .predecessor-loading {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f4f6;
+            border-top: 2px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            0% { transform: translateY(-50%) rotate(0deg); }
+            100% { transform: translateY(-50%) rotate(360deg); }
+        }
+
+        /* Export Button Enhancement */
+        .export-feedback-btn {
+            background: linear-gradient(135deg, #3b82f6, #1e40af);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            float: right;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .export-feedback-btn:hover {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .task-header {
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .task-details {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 4px;
+            }
+
+            .feedback-form {
+                padding: 10px;
+            }
+
+            .autocomplete-suggestions {
+                width: 100% !important;
+            }
+        }
+
+        /* Dark mode support (if needed) */
+        @media (prefers-color-scheme: dark) {
+            .task-feedback-item {
+                background: #1f2937;
+                border-color: #374151;
+                color: #f9fafb;
+            }
+
+            .feedback-form {
+                background: #111827;
+                border-color: #374151;
+            }
+
+            .autocomplete-suggestions {
+                background: #1f2937;
+                border-color: #374151;
+            }
+
+            .autocomplete-item:hover {
+                background: #374151;
+            }
+        }
     </style>
 </head>
 <body>
