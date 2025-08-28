@@ -5714,7 +5714,7 @@ class ProductionScheduler:
 
         return best_time
 
-    def scenario_3_simulated_annealing(self, target_earliness=-1, max_iterations=500,
+    def scenario_3_simulated_annealing(self, target_earliness=-1, max_iterations=300,
                                        initial_temp=100, cooling_rate=0.95):
         """Use simulated annealing to optimize for target delivery date"""
         import random

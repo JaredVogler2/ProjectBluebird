@@ -2690,6 +2690,22 @@ function goToDate(date) {
     focusOnTime(date);
 }
 
+// Validate task data before positioning
+function validateTaskData(tasks) {
+    console.log('\n=== VALIDATING TASK DATA ===');
+    tasks.slice(0, 5).forEach(task => {
+        const startDate = new Date(task.startDate);
+        const endDate = new Date(task.endDate);
+
+        console.log(`Task ${task.id}:
+            Raw start: ${task.startDate}
+            Raw end: ${task.endDate}
+            Parsed start: ${startDate.toLocaleString()} (${startDate.getTime()})
+            Parsed end: ${endDate.toLocaleString()} (${endDate.getTime()})
+            Valid: ${!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())}`);
+    });
+}
+
 // Focus on specific time with appropriate window based on scale
 function focusOnTime(centerTime) {
     if (!timeline) return;
@@ -5129,85 +5145,190 @@ function initializeCustomGantt() {
 }
 
 // Generate date range for Gantt chart with granular time scales
+// Fixed date range generation with proper alignment
+// Fixed date range generation with proper time alignment
+// Dynamic date range generation - always shows exactly 35 days
 function generateGanttDateRange(tasks, mode = '1day') {
     if (tasks.length === 0) {
-        const today = new Date();
-        return [today];
+        return [new Date()];
     }
 
-    const startDates = tasks.map(t => t.startDate);
-    const endDates = tasks.map(t => t.endDate);
-    let minStart = new Date(Math.min(...startDates));
-    let maxEnd = new Date(Math.max(...endDates));
+    console.log(`\n=== GENERATING DYNAMIC 35-DAY RANGE FOR ${mode} ===`);
 
-    // Add padding based on time scale
-    const paddingConfig = {
-        '15min': { amount: 2, unit: 'hours' },
-        '30min': { amount: 4, unit: 'hours' },
-        '1hour': { amount: 8, unit: 'hours' },
-        '4hour': { amount: 1, unit: 'days' },
-        '8hour': { amount: 1, unit: 'days' },
-        '1day': { amount: 2, unit: 'days' },
-        '1week': { amount: 7, unit: 'days' },
-        '2weeks': { amount: 14, unit: 'days' },
-        '1month': { amount: 30, unit: 'days' }
-    };
+    // Find the earliest task date as our starting point
+    const allTaskDates = [];
+    tasks.forEach(task => {
+        if (task.startDate && task.endDate) {
+            const start = new Date(task.startDate);
+            const end = new Date(task.endDate);
+            if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+                allTaskDates.push(start, end);
+            }
+        }
+    });
 
-    const padding = paddingConfig[mode] || paddingConfig['1day'];
-
-    if (padding.unit === 'hours') {
-        minStart.setHours(minStart.getHours() - padding.amount);
-        maxEnd.setHours(maxEnd.getHours() + padding.amount);
-    } else {
-        minStart.setDate(minStart.getDate() - padding.amount);
-        maxEnd.setDate(maxEnd.getDate() + padding.amount);
+    if (allTaskDates.length === 0) {
+        console.error('No valid task dates found!');
+        return [new Date()];
     }
 
-    const dates = [];
-    const current = new Date(minStart);
+    const earliestTaskDate = new Date(Math.min(...allTaskDates));
+    console.log(`Earliest task date: ${earliestTaskDate.toLocaleDateString()}`);
 
-    // Generate dates based on time scale
-    while (current <= maxEnd) {
-        dates.push(new Date(current));
+    // Start 1 day before the earliest task for context
+    let rangeStart = new Date(earliestTaskDate);
+    rangeStart.setDate(rangeStart.getDate() - 1);
 
+    // End exactly 35 days after the start (36 total days for good measure)
+    let rangeEnd = new Date(rangeStart);
+    rangeEnd.setDate(rangeEnd.getDate() + 36);
+
+    console.log(`35-day range: ${rangeStart.toLocaleDateString()} to ${rangeEnd.toLocaleDateString()}`);
+
+    // Align to period boundaries
+    switch (mode) {
+        case '15min':
+            rangeStart.setMinutes(Math.floor(rangeStart.getMinutes() / 15) * 15, 0, 0);
+            rangeEnd.setMinutes(Math.ceil(rangeEnd.getMinutes() / 15) * 15, 0, 0);
+            break;
+        case '30min':
+            rangeStart.setMinutes(Math.floor(rangeStart.getMinutes() / 30) * 30, 0, 0);
+            rangeEnd.setMinutes(Math.ceil(rangeEnd.getMinutes() / 30) * 30, 0, 0);
+            break;
+        case '1hour':
+        case '4hour':
+        case '8hour':
+            rangeStart.setMinutes(0, 0, 0);
+            rangeEnd.setMinutes(0, 0, 0);
+            break;
+        default:
+            rangeStart.setHours(0, 0, 0, 0);
+            rangeEnd.setHours(0, 0, 0, 0);
+    }
+
+    // Calculate exactly how many periods we need for 36 days
+    const totalDays = 36;
+    let expectedPeriods;
+
+    switch (mode) {
+        case '15min': expectedPeriods = totalDays * 24 ; break;      // 3,456 periods
+        case '30min': expectedPeriods = totalDays * 24 ; break;      // 1,728 periods
+        case '1hour': expectedPeriods = totalDays * 24; break;          // 864 periods
+        case '4hour': expectedPeriods = totalDays * 6; break;           // 216 periods
+        case '8hour': expectedPeriods = totalDays * 3; break;           // 108 periods
+        case '1day': expectedPeriods = totalDays; break;                // 36 periods
+        case '1week': expectedPeriods = Math.ceil(totalDays / 7); break; // ~5 periods
+        case '2weeks': expectedPeriods = Math.ceil(totalDays / 14); break; // ~3 periods
+        case '1month': expectedPeriods = Math.ceil(totalDays / 30); break; // ~2 periods
+        default: expectedPeriods = totalDays;
+    }
+
+    console.log(`Expected periods for ${totalDays} days in ${mode} mode: ${expectedPeriods}`);
+
+    // Generate exactly the right number of periods
+    const periods = [];
+    const current = new Date(rangeStart);
+    const endTime = rangeEnd.getTime();
+
+    let iterations = 0;
+    while (current.getTime() < endTime && periods.length < expectedPeriods + 100) { // +100 buffer for safety
+        periods.push(new Date(current));
+
+        // Increment based on mode
         switch (mode) {
-            case '15min':
-                current.setMinutes(current.getMinutes() + 15);
-                break;
-            case '30min':
-                current.setMinutes(current.getMinutes() + 30);
-                break;
-            case '1hour':
-                current.setHours(current.getHours() + 1);
-                break;
-            case '4hour':
-                current.setHours(current.getHours() + 4);
-                break;
-            case '8hour':
-                current.setHours(current.getHours() + 8);
-                break;
-            case '1day':
-                current.setDate(current.getDate() + 1);
-                break;
-            case '1week':
-                current.setDate(current.getDate() + 7);
-                break;
-            case '2weeks':
-                current.setDate(current.getDate() + 14);
-                break;
-            case '1month':
-                current.setMonth(current.getMonth() + 1);
-                break;
-            default:
-                current.setDate(current.getDate() + 1);
+            case '15min': current.setMinutes(current.getMinutes() + 15); break;
+            case '30min': current.setMinutes(current.getMinutes() + 30); break;
+            case '1hour': current.setHours(current.getHours() + 1); break;
+            case '4hour': current.setHours(current.getHours() + 4); break;
+            case '8hour': current.setHours(current.getHours() + 8); break;
+            case '1day': current.setDate(current.getDate() + 1); break;
+            case '1week': current.setDate(current.getDate() + 7); break;
+            case '2weeks': current.setDate(current.getDate() + 14); break;
+            case '1month': current.setMonth(current.getMonth() + 1); break;
+            default: current.setDate(current.getDate() + 1);
         }
 
-        // Limit total columns to prevent performance issues
-        if (dates.length > 200) break;
+        iterations++;
+
+        // Safety break to prevent infinite loops
+        if (iterations > expectedPeriods + 500) {
+            console.warn('Breaking loop - too many iterations');
+            break;
+        }
     }
 
-    return dates;
+    console.log(`Generated ${periods.length} periods (expected ~${expectedPeriods})`);
+    console.log(`Range: ${periods[0]?.toLocaleDateString()} to ${periods[periods.length-1]?.toLocaleDateString()}`);
+
+    // Performance warning for large column counts
+    if (periods.length > 1500) {
+        console.warn(`⚠️ Generated ${periods.length} columns. This may impact browser performance.`);
+    }
+
+    return periods;
 }
+
+// Check if Product C_25 is in the filtered task list
+function checkTaskFiltering() {
+    console.log('\n=== CHECKING TASK FILTERING ===');
+
+    // Check original tasks
+    if (window.scenarioData && window.scenarioData.tasks) {
+        const originalC25 = window.scenarioData.tasks.filter(t =>
+            t.taskId?.includes('C_25') || t.product?.includes('C')
+        );
+        console.log(`Original scenarioData.tasks with C: ${originalC25.length}`);
+    }
+
+    // Check converted tasks
+    if (window.customGanttTasks) {
+        const convertedC25 = window.customGanttTasks.filter(t =>
+            t.id?.includes('C_25') || t.product?.includes('C')
+        );
+        console.log(`Converted customGanttTasks with C: ${convertedC25.length}`);
+    }
+
+    // Check filtered tasks
+    const filteredTasks = getFilteredGanttTasks();
+    const filteredC25 = filteredTasks.filter(t =>
+        t.id?.includes('C_25') || t.product?.includes('C')
+    );
+    console.log(`Filtered tasks with C: ${filteredC25.length}`);
+
+    // Show the specific C_25 task
+    const c25Task = filteredTasks.find(t => t.id === 'Product C_25');
+    if (c25Task) {
+        console.log(`Found Product C_25 in filtered tasks:`, c25Task);
+    } else {
+        console.log(`Product C_25 NOT found in filtered tasks!`);
+    }
+}
+
+
+
+// Debug function to verify 15-minute periods contain the expected times
+function debug15MinutePeriods(task, dates) {
+    if (task.id === 'Product_B_QI_116') {
+        console.log(`\n=== DEBUG: Task ${task.id} 15-minute alignment ===`);
+        console.log(`Task: ${task.startDate.toLocaleString()} - ${task.endDate.toLocaleString()}`);
+
+        // Find periods that should contain this task
+        const relevantPeriods = dates.filter((date, index) => {
+            const nextPeriod = new Date(date);
+            nextPeriod.setMinutes(nextPeriod.getMinutes() + 15);
+            const overlaps = task.startDate < nextPeriod && task.endDate > date;
+
+            if (overlaps) {
+                console.log(`✓ Period ${index}: ${date.toLocaleTimeString()} - ${nextPeriod.toLocaleTimeString()} SHOULD contain task`);
+            }
+
+            return overlaps;
+        });
+
+        console.log(`Found ${relevantPeriods.length} relevant periods for task`);
+    }
+}
+
 
 // Get filtered tasks based on current selections
 // Get filtered tasks based on current selections including critical path filter
@@ -5268,19 +5389,206 @@ function getFilteredGanttTasks() {
 }
 
 // Render the complete Gantt chart with enhanced time scale support
+// Render with validation
+// Enhanced renderCustomGanttChart with specific debugging
 function renderCustomGanttChart() {
     const tasks = getFilteredGanttTasks();
 
-    // Get the selected time scale from dropdown
-    customGanttViewMode = document.getElementById('ganttViewMode')?.value || '1day';
+    if (tasks.length === 0) {
+        console.log('No tasks to render');
+        return;
+    }
 
+    customGanttViewMode = document.getElementById('ganttViewMode')?.value || '1day';
     const dates = generateGanttDateRange(tasks, customGanttViewMode);
+
+    // Debug specific problematic task
+    debugSpecificTask('Product C_25', tasks, dates, customGanttViewMode);
 
     renderGanttHeader(dates);
     renderGanttTasks(tasks, dates);
     updateGanttStats(tasks);
 
-    console.log(`Rendered Gantt chart with ${tasks.length} tasks, ${dates.length} time periods (${customGanttViewMode} scale)`);
+    console.log(`Rendered Gantt: ${tasks.length} tasks, ${dates.length} periods, ${customGanttViewMode} scale`);
+}
+
+// Find and inspect task data
+function findTaskInData() {
+    console.log('\n🔍 SEARCHING FOR PRODUCT C_25 TASK:');
+
+    if (window.customGanttTasks) {
+        const found = window.customGanttTasks.filter(t =>
+            t.id?.includes('C_25') ||
+            t.name?.includes('C_25') ||
+            t.taskId?.includes('C_25')
+        );
+        console.log('Found in customGanttTasks:', found);
+    }
+
+    if (window.scenarioData && window.scenarioData.tasks) {
+        const found = window.scenarioData.tasks.filter(t =>
+            t.taskId?.includes('C_25') ||
+            t.name?.includes('C_25') ||
+            t.product?.includes('C')
+        );
+        console.log('Found in scenarioData.tasks:', found.slice(0, 3));
+    }
+}
+
+// Debug Product C_25 step by step
+function debugProductC25() {
+    console.log('\n=== DEBUGGING PRODUCT C_25 STEP BY STEP ===');
+
+    // Find the task
+    const task = customGanttTasks.find(t => t.id === 'Product C_25' || t.name?.includes('Product C_25'));
+    if (!task) {
+        console.log('Task not found in customGanttTasks');
+        return;
+    }
+
+    console.log('1. TASK DATA:');
+    console.log(`   ID: ${task.id}`);
+    console.log(`   Start: ${task.startDate} (${task.startDate.toLocaleString()})`);
+    console.log(`   End: ${task.endDate} (${task.endDate.toLocaleString()})`);
+    console.log(`   Start timestamp: ${task.startDate.getTime()}`);
+    console.log(`   End timestamp: ${task.endDate.getTime()}`);
+
+    // Generate date range
+    const timeScale = '15min';
+    const allTasks = customGanttTasks;
+
+    console.log('\n2. GENERATING DATE RANGE:');
+    const dates = generateGanttDateRange(allTasks, timeScale);
+    console.log(`   Generated ${dates.length} periods`);
+    console.log(`   First period: ${dates[0].toLocaleString()}`);
+    console.log(`   Last period: ${dates[dates.length-1].toLocaleString()}`);
+
+    // Find periods that include August 28th
+    console.log('\n3. SEARCHING FOR AUGUST 28TH PERIODS:');
+    const aug28Periods = [];
+    dates.forEach((date, index) => {
+        if (date.getDate() === 28 && date.getMonth() === 7 && date.getFullYear() === 2025) { // August = month 7
+            aug28Periods.push({index, date: date.toLocaleString()});
+        }
+    });
+
+    console.log(`   Found ${aug28Periods.length} periods on August 28th:`);
+    aug28Periods.forEach(p => console.log(`   - Period ${p.index}: ${p.date}`));
+
+    // Check overlap with each August 28th period
+    console.log('\n4. CHECKING OVERLAPS WITH AUGUST 28TH PERIODS:');
+    aug28Periods.forEach(period => {
+        const periodStart = dates[period.index];
+        const periodEnd = new Date(periodStart);
+        periodEnd.setMinutes(periodEnd.getMinutes() + 15);
+
+        const taskStartMs = task.startDate.getTime();
+        const taskEndMs = task.endDate.getTime();
+        const periodStartMs = periodStart.getTime();
+        const periodEndMs = periodEnd.getTime();
+
+        const overlaps = taskStartMs < periodEndMs && taskEndMs > periodStartMs;
+
+        console.log(`   Period ${period.index} (${periodStart.toLocaleString()} - ${periodEnd.toLocaleString()}): ${overlaps ? 'OVERLAPS' : 'no overlap'}`);
+
+        if (overlaps) {
+            console.log(`     Task: ${taskStartMs} - ${taskEndMs}`);
+            console.log(`     Period: ${periodStartMs} - ${periodEndMs}`);
+            console.log(`     Task starts before period ends? ${taskStartMs < periodEndMs}`);
+            console.log(`     Task ends after period starts? ${taskEndMs > periodStartMs}`);
+        }
+    });
+
+    // Run the actual positioning function
+    console.log('\n5. ACTUAL POSITIONING FUNCTION RESULT:');
+    const position = calculateGanttTaskPosition(task, dates, timeScale);
+    console.log(`   Start index: ${position.startIndex}`);
+    console.log(`   End index: ${position.endIndex}`);
+    console.log(`   Width: ${position.width}`);
+
+    if (position.startIndex >= 0) {
+        const actualStartPeriod = dates[position.startIndex];
+        console.log(`   Actual start period: ${actualStartPeriod.toLocaleString()}`);
+        console.log(`   Expected date: August 28th`);
+        console.log(`   Actual date: ${actualStartPeriod.toLocaleDateString()}`);
+        console.log(`   Days difference: ${Math.round((actualStartPeriod.getTime() - task.startDate.getTime()) / (1000*60*60*24))}`);
+    }
+
+    return {task, dates, aug28Periods, position};
+}
+
+// Debug specific task positioning
+function debugSpecificTask(taskId, tasks, dates, timeScale) {
+    const task = tasks.find(t => t.id === taskId || t.name?.includes(taskId) || t.taskId === taskId);
+
+    if (!task) {
+        console.log(`❌ Task ${taskId} not found in task list`);
+        return;
+    }
+
+    console.log(`\n🔍 DEBUGGING TASK: ${taskId}`);
+    console.log(`Task Object:`, task);
+    console.log(`Task Start: ${task.startDate} (${typeof task.startDate})`);
+    console.log(`Task End: ${task.endDate} (${typeof task.endDate})`);
+
+    // Parse dates
+    const startDate = new Date(task.startDate);
+    const endDate = new Date(task.endDate);
+
+    console.log(`Parsed Start: ${startDate.toLocaleString()} (${startDate.getTime()})`);
+    console.log(`Parsed End: ${endDate.toLocaleString()} (${endDate.getTime()})`);
+    console.log(`Is Valid: Start=${!isNaN(startDate.getTime())}, End=${!isNaN(endDate.getTime())}`);
+
+    // Show date range
+    console.log(`\n📅 DATE RANGE (${timeScale}):`);
+    console.log(`First period: ${dates[0]?.toLocaleString()}`);
+    console.log(`Last period: ${dates[dates.length-1]?.toLocaleString()}`);
+    console.log(`Total periods: ${dates.length}`);
+
+    // Check each period for overlap
+    console.log(`\n🔄 CHECKING OVERLAPS:`);
+    let foundOverlaps = [];
+
+    for (let i = 0; i < Math.min(dates.length, 20); i++) { // Check first 20 periods
+        const period = dates[i];
+        const periodEnd = new Date(period);
+
+        // Calculate period end
+        switch (timeScale) {
+            case '15min': periodEnd.setMinutes(periodEnd.getMinutes() + 15); break;
+            case '30min': periodEnd.setMinutes(periodEnd.getMinutes() + 30); break;
+            case '1hour': periodEnd.setHours(periodEnd.getHours() + 1); break;
+            default: periodEnd.setDate(periodEnd.getDate() + 1);
+        }
+
+        const taskStartMs = startDate.getTime();
+        const taskEndMs = endDate.getTime();
+        const periodStartMs = period.getTime();
+        const periodEndMs = periodEnd.getTime();
+
+        const overlaps = taskStartMs < periodEndMs && taskEndMs > periodStartMs;
+
+        console.log(`Period ${i}: ${period.toLocaleString()} - ${periodEnd.toLocaleString()} = ${overlaps ? '✅ OVERLAP' : '❌ no overlap'}`);
+
+        if (overlaps) {
+            foundOverlaps.push(i);
+        }
+    }
+
+    console.log(`\n📍 EXPECTED POSITION:`);
+    if (foundOverlaps.length > 0) {
+        console.log(`Should start at column ${foundOverlaps[0]} and end at column ${foundOverlaps[foundOverlaps.length-1]}`);
+        console.log(`Width should be: ${foundOverlaps.length} columns`);
+    } else {
+        console.log(`❌ NO OVERLAPPING PERIODS FOUND!`);
+    }
+
+    // Check what the actual positioning function returns
+    const actualPosition = calculateGanttTaskPosition(task, dates, timeScale);
+    console.log(`\n🎯 ACTUAL POSITION:`);
+    console.log(`Calculated: start=${actualPosition.startIndex}, end=${actualPosition.endIndex}, width=${actualPosition.width}`);
+
+    return { task, expectedOverlaps: foundOverlaps, actualPosition };
 }
 
 // Render Gantt chart header with date and shift rows
@@ -5512,30 +5820,52 @@ function renderGanttTasks(tasks, dates) {
 }
 
 // Calculate task position in the Gantt chart
-function calculateGanttTaskPosition(task, dates) {
+// Enhanced task positioning with debugging
+// Enhanced task positioning with detailed debugging
+// Enhanced task positioning with 15-minute debugging
+function calculateGanttTaskPosition(task, dates, timeScale) {
     let startIndex = -1;
     let endIndex = -1;
+
+    // Special debug for 15-minute troublesome task
+    if (timeScale === '15min') {
+        debug15MinutePeriods(task, dates);
+    }
+
+    console.log(`\n=== Positioning Task ${task.id} ===`);
+    console.log(`Task time: ${task.startDate.toLocaleString()} - ${task.endDate.toLocaleString()}`);
 
     for (let i = 0; i < dates.length; i++) {
         const date = dates[i];
 
-        if (task.startDate.toDateString() === date.toDateString()) {
-            startIndex = i;
-        }
-
-        if (task.endDate.toDateString() === date.toDateString()) {
+        if (taskOverlapsTimePeriod(task, date, timeScale)) {
+            if (startIndex === -1) {
+                startIndex = i;
+                console.log(`→ Task ${task.id} STARTS at column ${i}: ${date.toLocaleString()}`);
+            }
             endIndex = i;
         }
     }
 
-    // Handle tasks that start before or end after visible range
-    if (startIndex === -1) startIndex = 0;
-    if (endIndex === -1) endIndex = dates.length - 1;
+    if (endIndex > startIndex) {
+        console.log(`→ Task ${task.id} ENDS at column ${endIndex}: ${dates[endIndex].toLocaleString()}`);
+    }
+
+    // Handle edge cases
+    if (startIndex === -1) {
+        console.error(`❌ Task ${task.id} found NO overlapping columns!`);
+        console.log(`First column: ${dates[0]?.toLocaleString()}`);
+        console.log(`Last column: ${dates[dates.length-1]?.toLocaleString()}`);
+        return { startIndex: 0, endIndex: 0, width: 0 };
+    }
+
+    const width = endIndex - startIndex + 1;
+    console.log(`→ Final position: columns ${startIndex}-${endIndex}, width ${width}`);
 
     return {
         startIndex: startIndex,
         endIndex: endIndex,
-        width: endIndex - startIndex + 1
+        width: width
     };
 }
 
@@ -5707,10 +6037,13 @@ function updateGanttStatsDetailed(tasks) {
     document.getElementById('ganttCompletionRate').textContent = completionRate + '%';
 
 // Global functions for buttons
+// Missing refresh function
 function refreshCustomGantt() {
     renderCustomGanttChart();
     showNotification('Gantt chart refreshed', 'success');
 }
+
+
 
 function exportCustomGantt() {
     const tasks = getFilteredGanttTasks();
@@ -5766,8 +6099,13 @@ window.showNotification = showNotification;
 // Make functions available globally
 window.handleGanttSortChange = handleGanttSortChange;
 window.refreshGanttChart = refreshGanttChart;
-window.exportGanttChart = exportGanttChart;
 
+window.exportGanttChart = exportGanttChart;
+window.refreshCustomGantt = refreshCustomGantt;
+
+window.fitGanttToTasks = fitGanttToTasks;
+window.debugProductC25 = debugProductC25;
+window.checkTaskFiltering = checkTaskFiltering;
 // Make functions globally available
 window.refreshTimeline = refreshTimeline;
 window.exportTimelineData = exportTimelineData;
@@ -5928,10 +6266,12 @@ function calculateGanttTaskPosition(task, dates, timeScale) {
 }
 
 // Check if task overlaps with a time period
+// Fixed task overlap detection with better date comparison
+// Simplified and more reliable overlap detection
 function taskOverlapsTimePeriod(task, periodStart, timeScale) {
+    // Create period end time
     const periodEnd = new Date(periodStart);
 
-    // Calculate period end based on time scale
     switch (timeScale) {
         case '15min':
             periodEnd.setMinutes(periodEnd.getMinutes() + 15);
@@ -5960,10 +6300,28 @@ function taskOverlapsTimePeriod(task, periodStart, timeScale) {
         case '1month':
             periodEnd.setMonth(periodEnd.getMonth() + 1);
             break;
+        default:
+            periodEnd.setDate(periodEnd.getDate() + 1);
     }
 
-    // Check if task time range overlaps with period time range
-    return task.startDate < periodEnd && task.endDate > periodStart;
+    // Convert all dates to UTC milliseconds to avoid timezone issues
+    const taskStartMs = new Date(task.startDate).getTime();
+    const taskEndMs = new Date(task.endDate).getTime();
+    const periodStartMs = periodStart.getTime();
+    const periodEndMs = periodEnd.getTime();
+
+    // Simple overlap check: task overlaps period if task_start < period_end AND task_end > period_start
+    const overlaps = taskStartMs < periodEndMs && taskEndMs > periodStartMs;
+
+    // Debug specific problematic task
+    if (task.id && task.id.includes('E_QI_101')) {
+        console.log(`TASK ${task.id}:
+            Task: ${new Date(taskStartMs).toLocaleString()} - ${new Date(taskEndMs).toLocaleString()}
+            Period: ${new Date(periodStartMs).toLocaleString()} - ${new Date(periodEndMs).toLocaleString()}
+            Overlaps: ${overlaps}`);
+    }
+
+    return overlaps;
 }
 
 // Generate tooltip content based on time scale
@@ -6156,7 +6514,9 @@ function fitGanttToTasks() {
 }
 
 // Format date labels (separate from time labels)
+// Fixed date label formatting with better debugging
 function formatGanttDateLabel(date, timeScale) {
+    let label;
     switch (timeScale) {
         case '15min':
         case '30min':
@@ -6164,24 +6524,32 @@ function formatGanttDateLabel(date, timeScale) {
         case '4hour':
         case '8hour':
             // Show date for time-based scales
-            return date.toLocaleDateString('en-US', {
+            label = date.toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric'
             });
+            break;
         case '1day':
-            return date.toLocaleDateString('en-US', {
+            label = date.toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric'
             });
+            break;
         case '1week':
-            return `Week ${getWeekNumber(date)}`;
+            label = `Week ${getWeekNumber(date)}`;
+            break;
         case '2weeks':
-            return `W${getWeekNumber(date)}-${getWeekNumber(new Date(date.getTime() + 7 * 24 * 60 * 60 * 1000))}`;
+            label = `W${getWeekNumber(date)}-${getWeekNumber(new Date(date.getTime() + 7 * 24 * 60 * 60 * 1000))}`;
+            break;
         case '1month':
-            return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+            label = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+            break;
         default:
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            label = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
+
+    console.log(`Date ${date.toISOString()} -> Label: ${label}`);
+    return label;
 }
 
 // Determine which shift a time period belongs to

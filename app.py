@@ -167,7 +167,7 @@ def initialize_scheduler():
         # Run scenario 3 simulated annealing optimization
         result3 = scheduler.scenario_3_simulated_annealing(
             target_earliness=-1,  # Target 1 day early
-            max_iterations=300,
+            max_iterations=100,
             initial_temp=100,
             cooling_rate=0.95
         )
