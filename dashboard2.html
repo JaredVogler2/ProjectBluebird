@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jared's Production Dashboard - Enhanced</title>
+    <title>FOCUS</title>
 
     <style>
         * {
@@ -920,7 +920,7 @@
         <div class="header">
             <h1>
                 <div class="icon">JV</div>
-                Jared's Production Dashboard
+                FOCUS Dashboard
             </h1>
             <div class="controls">
                 <div class="scenario-selector">
@@ -1025,6 +1025,11 @@
                                 <div class="todo-bullet"></div>
                                 <div class="todo-text">Trial locations VFIN and/or Delivery Center</div>
                                 <div class="todo-priority medium">Medium</div>
+                            </li>
+                            <li class="todo-item">
+                                <div class="todo-bullet"></div>
+                                <div class="todo-text">Clean output of schedule, dependent tasks, priority etc for use with Simio</div>
+                                <div class="todo-priority high">High</div>
                             </li>
                             <li class="todo-item">
                                 <div class="todo-bullet"></div>
@@ -1247,45 +1252,53 @@
             <div id="project-view" class="view-content">
                 <!-- Gantt Chart Controls -->
                 <div class="gantt-controls-new" style="display: flex; gap: 15px; margin-bottom: 15px; align-items: center; flex-wrap: wrap; background: #f9fafb; padding: 15px; border-radius: 8px;">
-                    <div class="filter-group">
-                        <label>Product:</label>
-                        <select id="ganttProductFilter">
-                            <option value="all">All Products</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label>Team:</label>
-                        <select id="ganttTeamFilter">
-                            <option value="all">All Teams</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label>View:</label>
-                        <select id="ganttViewMode">
-                            <option value="15min">15 Minutes</option>
-                            <option value="30min">30 Minutes</option>
-                            <option value="1hour">1 Hour</option>
-                            <option value="4hour">4 Hours</option>
-                            <option value="8hour">8 Hours</option>
-                            <option value="1day" selected>1 Day</option>
-                            <option value="1week">1 Week</option>
-                            <option value="2weeks">2 Weeks</option>
-                            <option value="1month">1 Month</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label>Sort By:</label>
-                        <select id="ganttSortBy">
-                            <option value="startDate">Start Date</option>
-                            <option value="product">Product</option>
-                            <option value="team">Team</option>
-                            <option value="priority">Priority</option>
-                        </select>
-                    </div>
-                    <button class="btn btn-primary" onclick="refreshCustomGantt()">Refresh</button>
-                    <button class="btn btn-secondary" onclick="exportCustomGantt()">Export</button>
-                    <button class="btn btn-secondary" onclick="fitGanttToTasks()">Fit All</button>
-                </div>
+    <div class="filter-group">
+        <label>Product:</label>
+        <select id="ganttProductFilter">
+            <option value="all">All Products</option>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Team:</label>
+        <select id="ganttTeamFilter">
+            <option value="all">All Teams</option>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Critical Path:</label>
+        <select id="ganttCriticalFilter">
+            <option value="all">All Tasks</option>
+            <option value="critical">Critical Path Only</option>
+            <option value="non-critical">Non-Critical Only</option>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>View:</label>
+        <select id="ganttViewMode">
+            <option value="15min">15 Minutes</option>
+            <option value="30min">30 Minutes</option>
+            <option value="1hour">1 Hour</option>
+            <option value="4hour">4 Hours</option>
+            <option value="8hour">8 Hours</option>
+            <option value="1day" selected>1 Day</option>
+            <option value="1week">1 Week</option>
+            <option value="2weeks">2 Weeks</option>
+            <option value="1month">1 Month</option>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Sort By:</label>
+        <select id="ganttSortBy">
+            <option value="startDate">Start Date</option>
+            <option value="product">Product</option>
+            <option value="team">Team</option>
+            <option value="priority">Priority</option>
+        </select>
+    </div>
+    <button class="btn btn-primary" onclick="refreshCustomGantt()">Refresh</button>
+    <button class="btn btn-secondary" onclick="exportCustomGantt()">Export</button>
+    <button class="btn btn-secondary" onclick="fitGanttToTasks()">Fit All</button>
+</div>
 
                 <!-- Gantt Statistics -->
                 <div class="gantt-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 15px;">

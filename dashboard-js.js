@@ -5210,20 +5210,42 @@ function generateGanttDateRange(tasks, mode = '1day') {
 }
 
 // Get filtered tasks based on current selections
+// Get filtered tasks based on current selections including critical path filter
 function getFilteredGanttTasks() {
     const productFilter = document.getElementById('ganttProductFilter')?.value || 'all';
     const teamFilter = document.getElementById('ganttTeamFilter')?.value || 'all';
+    const criticalFilter = document.getElementById('ganttCriticalFilter')?.value || 'all';
     const sortBy = document.getElementById('ganttSortBy')?.value || 'startDate';
 
     let filtered = [...customGanttTasks];
 
-    // Apply filters
+    // Apply product filter
     if (productFilter !== 'all') {
         filtered = filtered.filter(task => task.product === productFilter);
     }
 
+    // Apply team filter
     if (teamFilter !== 'all') {
         filtered = filtered.filter(task => task.team === teamFilter);
+    }
+
+    // Apply critical path filter
+    if (criticalFilter === 'critical') {
+        filtered = filtered.filter(task =>
+            task.critical ||
+            task.isCritical ||
+            task.isCriticalPath ||
+            task.priority <= 10 ||
+            (task.slackHours !== undefined && task.slackHours < 24)
+        );
+    } else if (criticalFilter === 'non-critical') {
+        filtered = filtered.filter(task =>
+            !task.critical &&
+            !task.isCritical &&
+            !task.isCriticalPath &&
+            (task.priority === undefined || task.priority > 10) &&
+            (task.slackHours === undefined || task.slackHours >= 24)
+        );
     }
 
     // Apply sorting
@@ -5245,7 +5267,6 @@ function getFilteredGanttTasks() {
     return filtered;
 }
 
-// Render the complete Gantt chart
 // Render the complete Gantt chart with enhanced time scale support
 function renderCustomGanttChart() {
     const tasks = getFilteredGanttTasks();
@@ -5262,16 +5283,20 @@ function renderCustomGanttChart() {
     console.log(`Rendered Gantt chart with ${tasks.length} tasks, ${dates.length} time periods (${customGanttViewMode} scale)`);
 }
 
-// Render Gantt chart header
+// Render Gantt chart header with date and shift rows
 function renderGanttHeader(dates) {
     const header = document.getElementById('ganttHeaderNew');
     if (!header) return;
 
     header.innerHTML = '';
 
-    const headerRow = document.createElement('tr');
+    const timeScale = customGanttViewMode || '1day';
+    const columnConfig = getGanttColumnConfig(timeScale);
 
-    // Task column header
+    // Create first header row (dates)
+    const dateRow = document.createElement('tr');
+
+    // Task column header (spans both rows)
     const taskHeader = document.createElement('th');
     taskHeader.style.cssText = `
         min-width: 250px;
@@ -5288,49 +5313,73 @@ function renderGanttHeader(dates) {
         color: #374151;
     `;
     taskHeader.textContent = 'Tasks';
-    headerRow.appendChild(taskHeader);
+    taskHeader.rowSpan = 2; // Span both header rows
+    dateRow.appendChild(taskHeader);
 
     // Date column headers
     dates.forEach(date => {
         const dateHeader = document.createElement('th');
         const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-        const isToday = date.toDateString() === new Date().toDateString();
+        const isToday = isTimeToday(date, timeScale);
 
         dateHeader.style.cssText = `
-            min-width: 40px;
-            width: 40px;
+            min-width: ${columnConfig.width}px;
+            width: ${columnConfig.width}px;
             text-align: center;
-            padding: 8px 4px;
-            border-bottom: 2px solid #e5e7eb;
+            padding: 6px 4px;
+            border-bottom: 1px solid #e5e7eb;
             border-right: 1px solid #e5e7eb;
             font-weight: 600;
-            font-size: 11px;
+            font-size: ${Math.max(10, columnConfig.fontSize - 1)}px;
             color: ${isToday ? '#ef4444' : '#374151'};
-            background: ${isWeekend ? '#f9fafb' : isToday ? '#fef2f2' : '#f8fafc'};
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
+            background: ${isWeekend && columnConfig.showWeekends ? '#f9fafb' : isToday ? '#fef2f2' : '#f8fafc'};
+            ${columnConfig.vertical && columnConfig.width < 50 ? 'writing-mode: vertical-rl; text-orientation: mixed;' : ''}
         `;
 
-        if (customGanttViewMode === 'days') {
-            dateHeader.textContent = date.getDate().toString().padStart(2, '0');
-        } else {
-            dateHeader.textContent = `W${getWeekNumber(date)}`;
-        }
+        // Set date header text
+        dateHeader.textContent = formatGanttDateLabel(date, timeScale);
+        dateHeader.title = formatGanttHeaderTooltip(date, timeScale);
 
-        dateHeader.title = date.toLocaleDateString('en-US', {
-            weekday: 'long',
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric'
-        });
-
-        headerRow.appendChild(dateHeader);
+        dateRow.appendChild(dateHeader);
     });
 
-    header.appendChild(headerRow);
+    // Create second header row (shifts) - only for time scales that show hours
+    const shiftRow = document.createElement('tr');
+
+    dates.forEach(date => {
+        const shiftHeader = document.createElement('th');
+        const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+        const isToday = isTimeToday(date, timeScale);
+
+        shiftHeader.style.cssText = `
+            min-width: ${columnConfig.width}px;
+            width: ${columnConfig.width}px;
+            text-align: center;
+            padding: 4px 2px;
+            border-bottom: 2px solid #e5e7eb;
+            border-right: 1px solid #e5e7eb;
+            font-weight: 500;
+            font-size: ${Math.max(9, columnConfig.fontSize - 2)}px;
+            color: ${isToday ? '#ef4444' : '#6b7280'};
+            background: ${isWeekend && columnConfig.showWeekends ? '#f9fafb' : isToday ? '#fef2f2' : '#f8fafc'};
+        `;
+
+        // Set shift header text based on time scale
+        const shiftText = getShiftForTime(date, timeScale);
+        shiftHeader.textContent = shiftText;
+
+        if (shiftText && shiftText !== '-') {
+            const shiftInfo = getShiftInfo(shiftText);
+            shiftHeader.title = `${shiftText} Shift: ${shiftInfo.start} - ${shiftInfo.end} (${shiftInfo.duration})`;
+        }
+
+        shiftRow.appendChild(shiftHeader);
+    });
+
+    header.appendChild(dateRow);
+    header.appendChild(shiftRow);
 }
 
-// Render Gantt chart task rows
 // Render Gantt chart task rows with time-scale aware positioning
 function renderGanttTasks(tasks, dates) {
     const tbody = document.getElementById('ganttBodyNew');
@@ -5462,7 +5511,6 @@ function renderGanttTasks(tasks, dates) {
     console.log(`Rendered ${tasks.length} task rows with ${timeScale} time scale`);
 }
 
-
 // Calculate task position in the Gantt chart
 function calculateGanttTaskPosition(task, dates) {
     let startIndex = -1;
@@ -5515,9 +5563,8 @@ function getWeekNumber(date) {
 
 // Update Gantt chart statistics
 // 1. Fix the duration calculation
+// Enhanced updateGanttStats to include critical path information
 function updateGanttStats(tasks) {
-
-    // Ensure DOM elements exist
     const totalTasksEl = document.getElementById('ganttTotalTasks');
     const totalDurationEl = document.getElementById('ganttTotalDuration');
     const criticalTasksEl = document.getElementById('ganttCriticalTasks');
@@ -5530,41 +5577,52 @@ function updateGanttStats(tasks) {
 
     totalTasksEl.textContent = tasks.length;
 
-    // FIX: Calculate project makespan, not sum of task durations
+    // Calculate project makespan
     if (tasks.length > 0) {
         const startDates = tasks.map(t => t.startDate);
         const endDates = tasks.map(t => t.endDate);
         const projectStart = new Date(Math.min(...startDates));
         const projectEnd = new Date(Math.max(...endDates));
-
-        // Calculate actual project duration (makespan)
         const makespanDays = Math.ceil((projectEnd - projectStart) / (1000 * 60 * 60 * 24));
         totalDurationEl.textContent = makespanDays + ' days';
-
-        // Log debug info
-        console.log(`Project Makespan: ${makespanDays} days (${projectStart.toLocaleDateString()} to ${projectEnd.toLocaleDateString()})`);
     } else {
         totalDurationEl.textContent = '0 days';
     }
 
-    const criticalCount = tasks.filter(t => t.critical).length;
+    // Count critical tasks with comprehensive criteria
+    const criticalCount = tasks.filter(t =>
+        t.critical ||
+        t.isCritical ||
+        t.isCriticalPath ||
+        t.priority <= 10 ||
+        (t.slackHours !== undefined && t.slackHours < 24)
+    ).length;
+
     criticalTasksEl.textContent = criticalCount;
 
-    // Fix progress calculation - use scenario data if available
+    // Add percentage indicator if useful
+    if (tasks.length > 0) {
+        const criticalPercentage = Math.round((criticalCount / tasks.length) * 100);
+        criticalTasksEl.title = `${criticalPercentage}% of visible tasks are critical`;
+    }
+
+    // Calculate completion rate
     let completionRate = 0;
     if (scenarioData && scenarioData.onTimeRate !== undefined) {
         completionRate = scenarioData.onTimeRate;
     } else {
-        // Fallback to progress-based calculation
         const onScheduleCount = tasks.filter(t => t.progress >= 75).length;
         completionRate = tasks.length > 0 ? Math.round((onScheduleCount / tasks.length) * 100) : 0;
     }
     completionRateEl.textContent = completionRate + '%';
+
+    console.log(`Stats: ${tasks.length} tasks, ${criticalCount} critical (${Math.round((criticalCount/tasks.length)*100)}%)`);
 }
 
 
 // Populate Gantt filter dropdowns
 // Populate Gantt filter dropdowns with enhanced event handling
+// Populate Gantt filter dropdowns with enhanced event handling including critical filter
 function populateGanttFilters() {
     if (customGanttTasks.length === 0) return;
 
@@ -5594,8 +5652,8 @@ function populateGanttFilters() {
         });
     }
 
-    // Add event listeners for filters
-    const filterElements = ['ganttProductFilter', 'ganttTeamFilter', 'ganttSortBy'];
+    // Add event listeners for all filters including critical filter
+    const filterElements = ['ganttProductFilter', 'ganttTeamFilter', 'ganttCriticalFilter', 'ganttSortBy'];
     filterElements.forEach(id => {
         const element = document.getElementById(id);
         if (element && !element.hasAttribute('data-listener-added')) {
@@ -5717,14 +5775,15 @@ window.fitTimelineToTasks = fitTimelineToTasks
 }
 
 // Get column configuration for different time scales
+// Update getGanttColumnConfig to account for dual headers
 function getGanttColumnConfig(timeScale) {
     const configs = {
-        '15min': { width: 30, fontSize: 10, vertical: true, showWeekends: false },
-        '30min': { width: 35, fontSize: 10, vertical: true, showWeekends: false },
-        '1hour': { width: 40, fontSize: 11, vertical: true, showWeekends: false },
-        '4hour': { width: 50, fontSize: 11, vertical: false, showWeekends: false },
-        '8hour': { width: 60, fontSize: 11, vertical: false, showWeekends: false },
-        '1day': { width: 40, fontSize: 11, vertical: true, showWeekends: true },
+        '15min': { width: 35, fontSize: 10, vertical: true, showWeekends: false },
+        '30min': { width: 40, fontSize: 10, vertical: true, showWeekends: false },
+        '1hour': { width: 45, fontSize: 11, vertical: true, showWeekends: false },
+        '4hour': { width: 55, fontSize: 11, vertical: false, showWeekends: false },
+        '8hour': { width: 65, fontSize: 11, vertical: false, showWeekends: false },
+        '1day': { width: 45, fontSize: 11, vertical: true, showWeekends: true },
         '1week': { width: 70, fontSize: 11, vertical: false, showWeekends: false },
         '2weeks': { width: 80, fontSize: 11, vertical: false, showWeekends: false },
         '1month': { width: 90, fontSize: 11, vertical: false, showWeekends: false }
@@ -5945,5 +6004,218 @@ function getTaskBarTooltip(task, timeScale) {
     }
 
     return `${task.name || task.id}\nStart: ${startStr}\nEnd: ${endStr}\nDuration: ${durationStr}\nTeam: ${task.team || 'Unknown'}\nProduct: ${task.product || 'Unknown'}${task.critical ? '\n⚠️ CRITICAL TASK' : ''}`;
+}
+
+// Export custom Gantt chart data to CSV
+function exportCustomGantt() {
+    const tasks = getFilteredGanttTasks();
+
+    if (tasks.length === 0) {
+        alert('No tasks to export');
+        return;
+    }
+
+    const productFilter = document.getElementById('ganttProductFilter')?.value || 'all';
+    const teamFilter = document.getElementById('ganttTeamFilter')?.value || 'all';
+    const sortBy = document.getElementById('ganttSortBy')?.value || 'startDate';
+    const timeScale = customGanttViewMode || '1day';
+
+    let csvContent = "Custom Gantt Chart Export\n";
+    csvContent += `Generated: ${new Date().toLocaleString()}\n`;
+    csvContent += `Scenario: ${currentScenario}\n`;
+    csvContent += `Time Scale: ${timeScale}\n`;
+    csvContent += `Filters: Product=${productFilter}, Team=${teamFilter}, Sort=${sortBy}\n\n`;
+
+    csvContent += "Task ID,Task Name,Type,Product,Team,Start Date,End Date,Duration,Progress,Critical,Priority\n";
+
+    tasks.forEach(task => {
+        const startDate = task.startDate.toISOString();
+        const endDate = task.endDate.toISOString();
+        const durationText = timeScale.includes('min') || timeScale.includes('hour') ?
+            `${((task.endDate - task.startDate) / (1000 * 60 * 60)).toFixed(1)} hours` :
+            `${task.duration} days`;
+
+        csvContent += `"${task.id}","${task.name}","${task.originalType}","${task.product}","${task.team}","${startDate}","${endDate}","${durationText}","${task.progress}%","${task.critical ? 'Yes' : 'No'}","${task.priority}"\n`;
+    });
+
+    // Add summary statistics
+    csvContent += "\nSummary Statistics:\n";
+    csvContent += `Total Tasks: ${tasks.length}\n`;
+    csvContent += `Critical Tasks: ${tasks.filter(t => t.critical).length}\n`;
+    csvContent += `Time Scale: ${timeScale}\n`;
+
+    // Task type breakdown
+    const typeBreakdown = {};
+    tasks.forEach(task => {
+        typeBreakdown[task.type] = (typeBreakdown[task.type] || 0) + 1;
+    });
+
+    csvContent += "\nTask Type Breakdown:\n";
+    Object.entries(typeBreakdown).forEach(([type, count]) => {
+        csvContent += `${type}: ${count}\n`;
+    });
+
+    // Download CSV
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `gantt_chart_${currentScenario}_${timeScale}_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    showNotification('Gantt chart exported successfully!', 'success');
+}
+
+// Fit Gantt chart to show all tasks optimally
+function fitGanttToTasks() {
+    const tasks = getFilteredGanttTasks();
+
+    if (tasks.length === 0) {
+        showNotification('No tasks to fit', 'info');
+        return;
+    }
+
+    const container = document.querySelector('.gantt-container-new');
+    if (!container) {
+        console.error('Gantt container not found');
+        return;
+    }
+
+    // Reset horizontal scroll to beginning
+    container.scrollLeft = 0;
+
+    // Calculate optimal view based on task time span
+    const startDates = tasks.map(t => t.startDate);
+    const endDates = tasks.map(t => t.endDate);
+    const minStart = new Date(Math.min(...startDates));
+    const maxEnd = new Date(Math.max(...endDates));
+
+    const totalTimeSpan = maxEnd - minStart;
+    const spanDays = totalTimeSpan / (1000 * 60 * 60 * 24);
+    const spanHours = totalTimeSpan / (1000 * 60 * 60);
+
+    // Suggest optimal time scale based on span
+    let suggestedScale = customGanttViewMode;
+    const viewModeSelect = document.getElementById('ganttViewMode');
+
+    if (spanHours <= 4) {
+        suggestedScale = '15min';
+    } else if (spanHours <= 12) {
+        suggestedScale = '30min';
+    } else if (spanHours <= 48) {
+        suggestedScale = '1hour';
+    } else if (spanDays <= 3) {
+        suggestedScale = '4hour';
+    } else if (spanDays <= 7) {
+        suggestedScale = '8hour';
+    } else if (spanDays <= 31) {
+        suggestedScale = '1day';
+    } else if (spanDays <= 90) {
+        suggestedScale = '1week';
+    } else if (spanDays <= 180) {
+        suggestedScale = '2weeks';
+    } else {
+        suggestedScale = '1month';
+    }
+
+    // Update view mode if it would improve visibility
+    if (suggestedScale !== customGanttViewMode) {
+        const shouldSwitch = confirm(
+            `Current time span is ${spanDays.toFixed(1)} days. ` +
+            `Switch from ${customGanttViewMode} to ${suggestedScale} view for better fit?`
+        );
+
+        if (shouldSwitch && viewModeSelect) {
+            viewModeSelect.value = suggestedScale;
+            customGanttViewMode = suggestedScale;
+            renderCustomGanttChart();
+        }
+    }
+
+    // Smooth scroll to show first task
+    setTimeout(() => {
+        const firstTaskBar = container.querySelector('[style*="position: absolute"]');
+        if (firstTaskBar) {
+            const rect = firstTaskBar.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+
+            if (rect.left < containerRect.left || rect.right > containerRect.right) {
+                firstTaskBar.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'nearest',
+                    inline: 'start'
+                });
+            }
+        }
+    }, 100);
+
+    showNotification(`Fitted to ${tasks.length} tasks (${spanDays.toFixed(1)} day span)`, 'success');
+}
+
+// Format date labels (separate from time labels)
+function formatGanttDateLabel(date, timeScale) {
+    switch (timeScale) {
+        case '15min':
+        case '30min':
+        case '1hour':
+        case '4hour':
+        case '8hour':
+            // Show date for time-based scales
+            return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric'
+            });
+        case '1day':
+            return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric'
+            });
+        case '1week':
+            return `Week ${getWeekNumber(date)}`;
+        case '2weeks':
+            return `W${getWeekNumber(date)}-${getWeekNumber(new Date(date.getTime() + 7 * 24 * 60 * 60 * 1000))}`;
+        case '1month':
+            return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        default:
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+}
+
+// Determine which shift a time period belongs to
+function getShiftForTime(date, timeScale) {
+    // Only show shifts for time-based scales
+    if (!['15min', '30min', '1hour', '4hour', '8hour'].includes(timeScale)) {
+        return '-';
+    }
+
+    const hour = date.getHours();
+    const minute = date.getMinutes();
+    const timeDecimal = hour + (minute / 60);
+
+    // Shift definitions based on your requirements:
+    // 1st: 6:00 - 14:30 (6.0 - 14.5)
+    // 2nd: 14:30 - 23:00 (14.5 - 23.0)
+    // 3rd: 23:00 - 6:00 (23.0 - 24.0 and 0.0 - 6.0)
+
+    if (timeDecimal >= 6.0 && timeDecimal < 14.5) {
+        return '1st';
+    } else if (timeDecimal >= 14.5 && timeDecimal < 23.0) {
+        return '2nd';
+    } else {
+        return '3rd';
+    }
+}
+
+// Get shift information
+function getShiftInfo(shiftName) {
+    const shifts = {
+        '1st': { start: '6:00 AM', end: '2:30 PM', duration: '8.5 hours' },
+        '2nd': { start: '2:30 PM', end: '11:00 PM', duration: '8.5 hours' },
+        '3rd': { start: '11:00 PM', end: '6:00 AM', duration: '7 hours' }
+    };
+    return shifts[shiftName] || { start: '-', end: '-', duration: '-' };
 }
 
